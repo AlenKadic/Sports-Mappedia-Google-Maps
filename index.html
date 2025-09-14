@@ -3,27 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>My Maps + Data Browser (GH Pages • Minimal)</title>
-  <meta name="description" content="Embed Google My Maps and browse the same data with search & filters powered by a published Google Sheet CSV (with gviz fallback).">
+  <title>Sports Mappedia</title>
+  <meta name="description" content="This is unofficial fan created GIS hub for Sports events.">
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
   <!-- PapaParse for CSV parsing -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <link rel="icon" href="data:,">
   <style>
     html, body { height: 100%; }
-    #map { height: calc(100vh - 160px); } /* a bit taller now that setup panel is gone */
-    /* Plain CSS (no Tailwind @apply) */
-    .chip {
-      display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem;
-      border-radius: 9999px; border: 1px solid rgb(209 213 219);
-    }
-    .tab-btn-active {
-      background:#fff; border:1px solid rgb(209 213 219); border-bottom:0; font-weight:600;
-    }
+    #map { height: calc(100vh - 160px); }
+    .chip { display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem; border-radius: 9999px; border: 1px solid rgb(209 213 219); }
+    .tab-btn-active { background:#fff; border:1px solid rgb(209 213 219); border-bottom:0; font-weight:600; }
     .btn-tab { border:1px solid transparent; }
   </style>
 </head>
@@ -31,10 +25,12 @@
   <div class="max-w-7xl mx-auto p-4">
     <header class="mb-4 flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
-        <p class="text-sm text-gray-600">CSV first, with automatic gviz JSON fallback. URL overrides: <code>?mymap=...&csv=...&sheet=...</code></p>
+        <h1 class="text-2xl font-bold">Sports Mappedia</h1>
+        <p class="text-sm text-gray-600">This is unofficial fan created GIS hub for Sports events.</p>
       </div>
-      <div class="text-xs text-gray-500">Single-file • No backend</div>
+      <div class="text-xs text-gray-500 flex items-center gap-2">
+        <span id="status" class="px-2 py-1 rounded-lg border bg-white">Loading…</span>
+      </div>
     </header>
 
     <!-- Tabs -->
@@ -112,14 +108,16 @@
 
 <script>
 /* =====================
-   Minimal GH Pages app (no setup panel)
-   - Defaults below; URL params can override (?mymap=...&csv=...&sheet=...)
+   Minimal GH Pages app w/ diagnostics
    - CSV fetch with gviz JSON fallback
+   - Robust column/coordinate detection
+   - Status badge for quick troubleshooting
+   - URL params override (?mymap=...&csv=...&sheet=...)
    ===================== */
 
 const DEFAULTS = {
   mymap: "https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F",
-  csv: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv",
+  csv:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv",
   sheet: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false"
 };
 
@@ -135,8 +133,8 @@ const ALIASES = {
   Name: ['name','title','naziv','ime','object','poi','place'],
   Category: ['category','type','group','kategorija','vrsta'],
   Layer: ['layer','sloj','list','sheet','tab'],
-  Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing'],
-  Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting'],
+  Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing','lat (y)','lat_y'],
+  Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting','lon (x)','lon_x'],
   Address: ['address','location','addr','adresa','mjesto','city','town'],
   Notes: ['notes','description','desc','napomena','opis','info'],
   URL: ['url','link','website','href','web','maps','gmaps']
@@ -144,6 +142,7 @@ const ALIASES = {
 
 const elFrame     = document.getElementById('mymapsFrame');
 const elSheetFrame= document.getElementById('sheetFrame');
+const elStatus    = document.getElementById('status');
 
 const elTabMy   = document.getElementById('tab-mymap');
 const elTabBr   = document.getElementById('tab-browser');
@@ -157,6 +156,8 @@ const elCat     = document.getElementById('category');
 const elLayer   = document.getElementById('layer');
 const elResults = document.getElementById('results');
 const elReset   = document.getElementById('btnReset');
+
+function setStatus(text, ok=true){ elStatus.textContent = text; elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444'; elStatus.style.color = ok ? '#111827' : '#991b1b'; }
 
 function escapeHtml(s) {
   return (s ?? '').toString().replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m]));
@@ -174,33 +175,75 @@ function activateTab(which) {
   if (browserTab && map) setTimeout(() => map.invalidateSize(), 150);
 }
 
+// ---------- Column detection & coordinate parsing ----------
 function detectColumns(rows){
   if (!rows.length) return COL_KEYS;
   const headerSet = new Set(Object.keys(rows[0]).map(h => h.toString()));
   const lowerToReal = {}; headerSet.forEach(h => lowerToReal[h.toLowerCase()] = h);
+
   const out = {...COL_KEYS};
   for (const target in ALIASES){
     for (const alias of ALIASES[target]){
       if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
     }
   }
+  // If no Layer header, reuse Category for display filters
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
+
+  // Try to find a "combined coords" column if lat/lon are missing
+  if (!headerSet.has(out.Latitude) || !headerSet.has(out.Longitude)) {
+    // candidates that might contain "lat,lon" or "POINT(lon lat)"
+    const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
+    out._combined = candidates.length ? candidates[0] : null;
+  }
+
   return out;
 }
-function normalizeRows(rows){
-  const cols = detectColumns(rows);
-  return rows.map(r => ({
-    [COL_KEYS.name]: r[cols.Name],
-    [COL_KEYS.category]: r[cols.Category],
-    [COL_KEYS.layer]: r[cols.Layer],
-    [COL_KEYS.lat]: Number(r[cols.Latitude]),
-    [COL_KEYS.lon]: Number(r[cols.Longitude]),
-    [COL_KEYS.address]: r[cols.Address],
-    [COL_KEYS.notes]: r[cols.Notes],
-    [COL_KEYS.url]: r[cols.URL]
-  }));
+
+function parseCoordPair(text){
+  if (!text) return [NaN, NaN];
+  const s = String(text).trim();
+  // "45.812, 15.977"
+  let m = s.match(/^\s*([-+]?\d+(\.\d+)?)\s*[,;]\s*([-+]?\d+(\.\d+)?)\s*$/);
+  if (m) return [parseFloat(m[1]), parseFloat(m[3])];
+  // "POINT(15.977 45.812)" -> note order lon lat
+  m = s.match(/POINT\s*\(\s*([-+]?\d+(\.\d+)?)\s+([-+]?\d+(\.\d+)?)\s*\)/i);
+  if (m) return [parseFloat(m[3]), parseFloat(m[1])];
+  // "lat=45.812 lon=15.977"
+  m = s.match(/lat\s*[:=]\s*([-+]?\d+(\.\d+)?).*(lon|lng)\s*[:=]\s*([-+]?\d+(\.\d+)?)/i);
+  if (m) return [parseFloat(m[1]), parseFloat(m[4])];
+  return [NaN, NaN];
 }
 
+function normalizeRows(rows){
+  const cols = detectColumns(rows);
+  return rows.map(r => {
+    let lat = Number(r[cols.Latitude]);
+    let lon = Number(r[cols.Longitude]);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      if (cols._combined) {
+        const [pLat, pLon] = parseCoordPair(r[cols._combined]);
+        if (Number.isFinite(pLat) && Number.isFinite(pLon)) {
+          lat = pLat; lon = pLon;
+        }
+      }
+    }
+
+    return {
+      [COL_KEYS.name]: r[cols.Name],
+      [COL_KEYS.category]: r[cols.Category],
+      [COL_KEYS.layer]: r[cols.Layer],
+      [COL_KEYS.lat]: lat,
+      [COL_KEYS.lon]: lon,
+      [COL_KEYS.address]: r[cols.Address],
+      [COL_KEYS.notes]: r[cols.Notes],
+      [COL_KEYS.url]: r[cols.URL]
+    };
+  });
+}
+
+// ---------- Map ----------
 function ensureMap() {
   if (map) return map;
   map = L.map('map').setView([45.815, 15.9819], 6);
@@ -211,6 +254,7 @@ function ensureMap() {
   return map;
 }
 
+// ---------- Data loading ----------
 async function tryPapaCsv(url) {
   return new Promise((resolve, reject) => {
     Papa.parse(url, {
@@ -258,6 +302,7 @@ async function loadSheetRows(sheetCsvUrl) {
   catch (e) { console.warn('CSV load failed (using gviz fallback):', e); return await loadGvizJson(sheetCsvUrl); }
 }
 
+// ---------- UI & filters ----------
 function refreshFiltersAndMap() {
   const cats = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.category] ?? '').toString().trim()).filter(Boolean))).sort();
   const lays = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.layer] ?? '').toString().trim()).filter(Boolean))).sort();
@@ -266,9 +311,11 @@ function refreshFiltersAndMap() {
   applyFilters();
 }
 function applyFilters() {
-  const q = elQ.value.trim().toLowerCase();
+  const q = (elQ.value || '').trim().toLowerCase();
   const c = elCat.value;
   const l = elLayer.value;
+
+  const before = rawRows.length;
   filtered = rawRows.filter(r => {
     const inCat = !c || (r[COL_KEYS.category] ?? '').toString() === c;
     const inLay = !l || (r[COL_KEYS.layer] ?? '').toString() === l;
@@ -279,6 +326,10 @@ function applyFilters() {
     const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
     return inCat && inLay && inQ && coordsOk;
   });
+
+  const valid = filtered.length;
+  setStatus(`Loaded ${before} rows • Showing ${valid} with coordinates`, true);
+
   renderResults();
   ensureMap();
   markerLayer.clearLayers();
@@ -336,7 +387,7 @@ function renderResults() {
   });
 }
 
-// Events
+// Tab events
 elTabMy.addEventListener('click', () => activateTab('my'));
 elTabBr.addEventListener('click', () => activateTab('br'));
 elTabSh.addEventListener('click', () => activateTab('sh'));
@@ -348,20 +399,70 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.
   const csv   = getParam('csv', DEFAULTS.csv);
   const sheet = getParam('sheet', DEFAULTS.sheet);
 
-  elFrame.src = mymap;
-  elSheetFrame.src = sheet;
+  document.getElementById('mymapsFrame').src = mymap;
+  document.getElementById('sheetFrame').src = sheet;
 
+  setStatus('Loading data…');
   try {
     const rows = await loadSheetRows(csv);
     rawRows = normalizeRows(rows);
+    if (!rows.length) setStatus('Loaded 0 rows — check CSV URL or publish settings', false);
     refreshFiltersAndMap();
   } catch (e) {
-    console.warn('Failed to load data:', e);
+    console.error(e);
+    setStatus('Failed to load data — CSV blocked or URL invalid', false);
   }
 
   activateTab('my');
 })();
+
+// CSV → rows (with gviz fallback)
+async function loadSheetRows(sheetCsvUrl) {
+  try { return await tryPapaCsv(sheetCsvUrl); }
+  catch (e) { console.warn('CSV load failed (using gviz fallback):', e); return await loadGvizJson(sheetCsvUrl); }
+}
+function buildGvizUrl(sheetCsvUrl) {
+  const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
+  const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
+  if (!mKey || !mGid) return null;
+  return `https://docs.google.com/spreadsheets/d/e/${mKey[1]}/gviz/tq?gid=${mGid[1]}&tqx=out:json`;
+}
+function loadGvizJson(sheetCsvUrl) {
+  return new Promise((resolve, reject) => {
+    const url = buildGvizUrl(sheetCsvUrl);
+    if (!url) return reject(new Error('Could not build gviz URL from Sheet CSV URL.'));
+    window.google = window.google || {}; window.google.visualization = window.google.visualization || {};
+    window.google.visualization.Query = {
+      setResponse: function(resp) {
+        try {
+          const table = resp.table;
+          const cols = table.cols.map(c => c.label || c.id);
+          const rows = table.rows.map(r => {
+            const o = {}; r.c.forEach((cell, idx) => { const label = cols[idx] || `col${idx}`; o[label] = cell ? cell.v : null; });
+            return o;
+          });
+          resolve(rows);
+        } catch (e) { reject(e); }
+        finally { delete window.google.visualization.Query; const s = document.getElementById('gvizScriptLoader'); if (s) s.remove(); }
+      }
+    };
+    const s = document.createElement('script'); s.src = url; s.async = true; s.id = 'gvizScriptLoader';
+    s.onerror = () => { delete window.google.visualization.Query; reject(new Error('Failed to load gviz JSON.')); };
+    document.body.appendChild(s);
+  });
+}
+async function tryPapaCsv(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      header: true, download: true, dynamicTyping: true,
+      complete: (res) => {
+        const rows = res.data.filter(row => Object.keys(row).some(k => String(row[k] || '').trim() !== ''));
+        resolve(rows);
+      },
+      error: (err) => reject(err)
+    });
+  });
+}
 </script>
 </body>
 </html>
-
