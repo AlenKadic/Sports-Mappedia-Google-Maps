@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Maps + Data Browser (GitHub Pages Ready)</title>
+  <meta name="description" content="Embed Google My Maps and browse the same data with search & filters powered by a published Google Sheet CSV (with gviz fallback).">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { height: 100%; }
+    #map { height: calc(100vh - 220px); }
+    .chip { @apply inline-block px-2 py-0.5 text-xs rounded-full border; }
+    .tab-btn-active { @apply bg-white border border-b-0 font-medium; }
+    .kbd { @apply inline-flex items-center px-2 py-0.5 text-xs border rounded-md bg-gray-50; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-7xl mx-auto p-4">
+    <header class="mb-4 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
+        <p class="text-sm text-gray-600">GitHub Pages–ready. Works over HTTPS. CSV first, with automatic gviz JSON fallback.</p>
+      </div>
+      <div class="text-xs text-gray-500">
+        Single-file • No backend
+      </div>
+    </header>
+
+    <!-- Config panel -->
+    <section class="mb-4 p-4 bg-white rounded-2xl shadow">
+      <h2 class="font-semibold mb-2">Quick Setup</h2>
+      <ol class="list-decimal list-inside text-sm space-y-1 text-gray-700">
+        <li>We've preloaded your <span class="font-semibold">My Map</span> and <span class="font-semibold">Google Sheet</span>.</li>
+        <li>You can override by URL: <span class="kbd">?mymap=&lt;embed URL&gt;&csv=&lt;sheet CSV&gt;&sheet=&lt;sheet pubhtml&gt;</span></li>
+        <li>Or paste here and press <span class="font-semibold">Load Data</span>.</li>
+      </ol>
+
+      <div class="grid md:grid-cols-3 gap-3 mt-3">
+        <label class="block md:col-span-1">
+          <span class="text-sm font-medium">My Maps Embed URL</span>
+          <input id="mymapsUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
+                 value="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" />
+        </label>
+        <label class="block md:col-span-1">
+          <span class="text-sm font-medium">Google Sheet CSV URL</span>
+          <input id="csvUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
+                 value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv" />
+          <span class="text-xs text-gray-500">Publish your Sheet: File → Share → Publish to web → CSV</span>
+        </label>
+        <label class="block md:col-span-1">
+          <span class="text-sm font-medium">Sheet (pubhtml) for preview</span>
+          <input id="sheetUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
+                 value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false" />
+        </label>
+      </div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button id="btnLoad" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700">Load Data</button>
+        <button id="btnUseSample" class="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300">Use Sample Data</button>
+        <button id="btnPermalink" class="px-4 py-2 rounded-xl border hover:bg-gray-50">Copy permalink</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">If CSV fetch ever fails, the app automatically falls back to <code>gviz</code> JSON (script-load), which is CORS-safe from GitHub Pages.</p>
+    </section>
+
+    <!-- Tabs -->
+    <div class="border-b mb-3 flex items-center gap-2">
+      <button id="tab-mymap" class="px-3 py-2 rounded-t-lg tab-btn-active">My Map</button>
+      <button id="tab-browser" class="px-3 py-2 rounded-t-lg hover:bg-white/60">Data Browser</button>
+      <button id="tab-sheet" class="px-3 py-2 rounded-t-lg hover:bg-white/60">Sheet</button>
+    </div>
+
+    <!-- My Map -->
+    <section id="panel-mymap" class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="aspect-[16/9]">
+        <iframe id="mymapsFrame" class="w-full h-full" src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+      <div class="p-3 text-xs text-gray-600 border-t">
+        The embedded My Map is read-only here. Use the Data Browser tab to search & filter the CSV/JSON data.
+      </div>
+    </section>
+
+    <!-- Data Browser -->
+    <section id="panel-browser" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+      <div class="grid lg:grid-cols-3 gap-0">
+        <aside class="lg:col-span-1 border-r p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold">Filters</h2>
+            <button id="btnReset" class="text-xs px-2 py-1 rounded-lg border hover:bg-gray-50">Reset</button>
+          </div>
+
+          <label class="block mb-3">
+            <span class="text-sm font-medium">Search (name, address, notes)</span>
+            <input id="q" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Type to search..."/>
+          </label>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="text-sm font-medium">Category</span>
+              <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Layer</span>
+              <select id="layer" class="mt-1 w-full border rounded-xl px-3 py-2">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mt-3">
+            <span class="text-sm font-medium">Results</span>
+            <div id="results" class="mt-2 max-h-72 overflow-auto space-y-2 pr-1"></div>
+          </div>
+        </aside>
+
+        <main class="lg:col-span-2">
+          <div id="map"></div>
+        </main>
+      </div>
+    </section>
+
+    <!-- Sheet Embed -->
+    <section id="panel-sheet" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+      <div class="aspect-[16/9]">
+        <iframe id="sheetFrame" class="w-full h-full" src="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+      <div class="p-3 text-xs text-gray-600 border-t">
+        Published Google Sheet (read-only). Update the original Sheet to change both this view and the data powering the Data Browser.
+      </div>
+    </section>
+
+    <footer class="py-6 text-center text-xs text-gray-500">
+      Built with Google My Maps (embed) + Google Sheets (CSV or gviz JSON) + Leaflet. No server required.
+    </footer>
+  </div>
+
+<script>
+/* =====================
+   GitHub Pages–ready app
+   - CSV fetch over HTTPS; gviz fallback
+   - URL params override fields: ?mymap=...&csv=...&sheet=...
+   - Auto-detect common column names
+   ===================== */
+
+// ------------------- State --------------------
+let rawRows = [];
+let filtered = [];
+let markerLayer = null;
+let map = null;
+
+// Preferred column keys (app-level schema)
+const COL_KEYS = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
+
+// Common header aliases (lowercased comparisons)
+const ALIASES = {
+  Name: ['name','title','naziv','ime','object','poi','place'],
+  Category: ['category','type','group','kategorija','vrsta'],
+  Layer: ['layer','sloj','list','sheet','tab'],
+  Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing'],
+  Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting'],
+  Address: ['address','location','addr','adresa','mjesto','city','town'],
+  Notes: ['notes','description','desc','napomena','opis','info'],
+  URL: ['url','link','website','href','web','maps','gmaps']
+};
+
+// ------------------- Elements --------------------
+const elMyMapsUrl = document.getElementById('mymapsUrl');
+const elCsvUrl    = document.getElementById('csvUrl');
+const elSheetUrl  = document.getElementById('sheetUrl');
+const elFrame     = document.getElementById('mymapsFrame');
+const elSheetFrame= document.getElementById('sheetFrame');
+
+const elTabMy   = document.getElementById('tab-mymap');
+const elTabBr   = document.getElementById('tab-browser');
+const elTabSh   = document.getElementById('tab-sheet');
+const elPanelMy = document.getElementById('panel-mymap');
+const elPanelBr = document.getElementById('panel-browser');
+const elPanelSh = document.getElementById('panel-sheet');
+
+const elBtnLoad   = document.getElementById('btnLoad');
+const elBtnSample = document.getElementById('btnUseSample');
+const elBtnPermalink = document.getElementById('btnPermalink');
+
+const elQ       = document.getElementById('q');
+const elCat     = document.getElementById('category');
+const elLayer   = document.getElementById('layer');
+const elResults = document.getElementById('results');
+const elReset   = document.getElementById('btnReset');
+
+// ------------------- Utils --------------------
+function qs(name){ return new URLSearchParams(location.search).get(name) || ''; }
+function escapeHtml(s) { return (s ?? '').toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',\"'\":'&#39;'}[m])); }
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+function activateTab(which) {
+  const mapTab = which === 'my'; const browserTab = which === 'br'; const sheetTab = which === 'sh';
+  elPanelMy.classList.toggle('hidden', !mapTab);
+  elPanelBr.classList.toggle('hidden', !browserTab);
+  elPanelSh.classList.toggle('hidden', !sheetTab);
+  elTabMy.classList.toggle('tab-btn-active', mapTab);
+  elTabBr.classList.toggle('tab-btn-active', browserTab);
+  elTabSh.classList.toggle('tab-btn-active', sheetTab);
+  if (browserTab && map) setTimeout(() => map.invalidateSize(), 150);
+}
+
+// Column auto-detect
+function detectColumns(rows){
+  if (!rows.length) return COL_KEYS;
+  const headerSet = new Set(Object.keys(rows[0]).map(h => h.toString()));
+  const lowerToReal = {};
+  headerSet.forEach(h => lowerToReal[h.toLowerCase()] = h);
+
+  const out = {...COL_KEYS};
+  for (const target in ALIASES){
+    for (const alias of ALIASES[target]){
+      if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
+    }
+  }
+  // Keep 'Layer' if not present: default to empty; user can fill in Sheet, or we treat it as Category
+  if (!headerSet.has(out.Layer)) out.Layer = out.Category;
+  return out;
+}
+
+// Normalize rows to our target keys
+function normalizeRows(rows){
+  const cols = detectColumns(rows);
+  return rows.map(r => ({
+    [COL_KEYS.name]: r[cols.Name],
+    [COL_KEYS.category]: r[cols.Category],
+    [COL_KEYS.layer]: r[cols.Layer],
+    [COL_KEYS.lat]: Number(r[cols.Latitude]),
+    [COL_KEYS.lon]: Number(r[cols.Longitude]),
+    [COL_KEYS.address]: r[cols.Address],
+    [COL_KEYS.notes]: r[cols.Notes],
+    [COL_KEYS.url]: r[cols.URL]
+  }));
+}
+
+// Permalink builder
+function buildPermalink(){
+  const p = new URL(location.href);
+  p.searchParams.set('mymap', elMyMapsUrl.value.trim());
+  p.searchParams.set('csv', elCsvUrl.value.trim());
+  p.searchParams.set('sheet', elSheetUrl.value.trim());
+  return p.toString();
+}
+
+// ------------------- Map --------------------
+function ensureMap() {
+  if (map) return map;
+  map = L.map('map').setView([45.815, 15.9819], 6); // Zagreb-ish default
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+  return map;
+}
+
+// ------------------- Data Loading --------------------
+async function tryPapaCsv(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      header: true,
+      download: true,
+      dynamicTyping: true,
+      complete: (res) => {
+        const rows = res.data.filter(row => Object.keys(row).some(k => String(row[k] || '').trim() !== ''));
+        resolve(rows);
+      },
+      error: (err) => reject(err)
+    });
+  });
+}
+// gviz builder
+function buildGvizUrlFromSheetUrl(sheetCsvUrl) {
+  // Accept both "pub?output=csv&gid=" and "pub?gid=&...&output=csv"
+  const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
+  const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
+  if (!mKey || !mGid) return null;
+  const key = mKey[1];
+  const gid = mGid[1];
+  return `https://docs.google.com/spreadsheets/d/e/${key}/gviz/tq?gid=${gid}&tqx=out:json`;
+}
+function loadGvizJson(sheetCsvUrl) {
+  return new Promise((resolve, reject) => {
+    const url = buildGvizUrlFromSheetUrl(sheetCsvUrl);
+    if (!url) return reject(new Error('Could not build gviz URL from Sheet CSV URL.'));
+    window.google = window.google || {}; window.google.visualization = window.google.visualization || {};
+    window.google.visualization.Query = {
+      setResponse: function(resp) {
+        try {
+          const table = resp.table;
+          const cols = table.cols.map(c => c.label || c.id);
+          const rows = table.rows.map(r => {
+            const o = {}; r.c.forEach((cell, idx) => { const label = cols[idx] || `col${idx}`; o[label] = cell ? cell.v : null; });
+            return o;
+          });
+          resolve(rows);
+        } catch (e) { reject(e); }
+        finally { delete window.google.visualization.Query; const s = document.getElementById('gvizScriptLoader'); if (s) s.remove(); }
+      }
+    };
+    const s = document.createElement('script'); s.src = url; s.async = true; s.id = 'gvizScriptLoader';
+    s.onerror = () => { delete window.google.visualization.Query; reject(new Error('Failed to load gviz JSON.')); };
+    document.body.appendChild(s);
+  });
+}
+async function loadSheetRows(sheetCsvUrl) {
+  try { return await tryPapaCsv(sheetCsvUrl); }
+  catch (e) { console.warn('CSV load failed (using gviz fallback):', e); return await loadGvizJson(sheetCsvUrl); }
+}
+
+// ------------------- Filters & Rendering --------------------
+function refreshFiltersAndMap() {
+  const cats = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.category] ?? '').toString().trim()).filter(Boolean))).sort();
+  const lays = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.layer] ?? '').toString().trim()).filter(Boolean))).sort();
+  elCat.innerHTML = '<option value="">All</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  elLayer.innerHTML = '<option value="">All</option>' + lays.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+  applyFilters();
+}
+function applyFilters() {
+  const q = elQ.value.trim().toLowerCase();
+  const c = elCat.value;
+  const l = elLayer.value;
+  filtered = rawRows.filter(r => {
+    const inCat = !c || (r[COL_KEYS.category] ?? '').toString() === c;
+    const inLay = !l || (r[COL_KEYS.layer] ?? '').toString() === l;
+    const text = [r[COL_KEYS.name], r[COL_KEYS.address], r[COL_KEYS.notes], r[COL_KEYS.category], r[COL_KEYS.layer]]
+                .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
+    const inQ = !q || text.includes(q);
+    const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]);
+    const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
+    return inCat && inLay && inQ && coordsOk;
+  });
+  renderResults();
+  ensureMap();
+  markerLayer.clearLayers();
+  const bounds = [];
+  filtered.forEach((r) => {
+    const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]);
+    const marker = L.marker([lat, lon]).addTo(markerLayer);
+    const title = escapeHtml(r[COL_KEYS.name] ?? 'Untitled');
+    const cat = escapeHtml(r[COL_KEYS.category] ?? '');
+    const lay = escapeHtml(r[COL_KEYS.layer] ?? '');
+    const addr = escapeHtml(r[COL_KEYS.address] ?? '');
+    const notes = escapeHtml(r[COL_KEYS.notes] ?? '');
+    const url = (r[COL_KEYS.url] ?? '').toString().trim();
+    const html = `
+      <div class="text-sm">
+        <div class="font-semibold">${title}</div>
+        <div class="mt-1 space-x-1">
+          ${cat ? `<span class="chip">${cat}</span>` : ''}
+          ${lay ? `<span class="chip">${lay}</span>` : ''}
+        </div>
+        ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
+        ${notes ? `<div class="mt-1 text-xs">${notes}</div>` : ''}
+        ${url ? `<div class="mt-2"><a href="${escapeAttr(url)}" target="_blank" class="text-blue-600 underline">Open link</a></div>` : ''}
+      </div>`;
+    marker.bindPopup(html);
+    bounds.push([lat, lon]);
+  });
+  if (bounds.length) map.fitBounds(bounds, { padding: [20,20] });
+}
+function renderResults() {
+  elResults.innerHTML = '';
+  if (!filtered.length) { elResults.innerHTML = `<div class="text-xs text-gray-500">No results.</div>`; return; }
+  filtered.forEach((r) => {
+    const title = escapeHtml(r[COL_KEYS.name] ?? 'Untitled');
+    const cat = escapeHtml(r[COL_KEYS.category] ?? '');
+    const lay = escapeHtml(r[COL_KEYS.layer] ?? '');
+    const addr = escapeHtml(r[COL_KEYS.address] ?? '');
+    const url = (r[COL_KEYS.url] ?? '').toString().trim();
+    const card = document.createElement('div');
+    card.className = 'border rounded-xl p-2 hover:bg-gray-50 cursor-pointer';
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="font-medium">${title}</div>
+          <div class="mt-1 space-x-1">
+            ${cat ? `<span class="chip">${cat}</span>` : ''}
+            ${lay ? `<span class="chip">${lay}</span>` : ''}
+          </div>
+          ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
+        </div>
+        ${url ? `<a href="${escapeAttr(url)}" target="_blank" class="text-xs text-blue-600 underline">Open</a>` : ''}
+      </div>`;
+    card.addEventListener('click', () => { const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]); ensureMap(); map.setView([lat, lon], 15); activateTab('br'); });
+    elResults.appendChild(card);
+  });
+}
+
+// ------------------- Events --------------------
+elTabMy.addEventListener('click', () => activateTab('my'));
+elTabBr.addEventListener('click', () => activateTab('br'));
+elTabSh.addEventListener('click', () => activateTab('sh'));
+document.getElementById('btnReset').addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
+document.getElementById('btnUseSample').addEventListener('click', () => { rawRows = [
+  { [COL_KEYS.name]:'Hotel Dubrovnik', [COL_KEYS.category]:'Hotel', [COL_KEYS.layer]:'Accommodation', [COL_KEYS.lat]:45.812, [COL_KEYS.lon]:15.977, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'City center', [COL_KEYS.url]:'https://example.com' },
+  { [COL_KEYS.name]:'Muzej Mimara', [COL_KEYS.category]:'Museum', [COL_KEYS.layer]:'Attractions', [COL_KEYS.lat]:45.806, [COL_KEYS.lon]:15.969, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'Art collections', [COL_KEYS.url]:'' },
+  { [COL_KEYS.name]:'Arena Zagreb', [COL_KEYS.category]:'Stadium', [COL_KEYS.layer]:'Venues', [COL_KEYS.lat]:45.771, [COL_KEYS.lon]:15.938, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'Indoor arena', [COL_KEYS.url]:'' }
+]; refreshFiltersAndMap(); activateTab('br'); });
+document.getElementById('btnLoad').addEventListener('click', async () => {
+  const url = (elMyMapsUrl.value || '').trim();
+  const csv = (elCsvUrl.value || '').trim();
+  const sheet = (elSheetUrl.value || '').trim();
+  if (url) elFrame.src = url; else alert('Please paste your My Maps embed URL.');
+  if (sheet) elSheetFrame.src = sheet;
+  if (csv) {
+    try { const rows = await loadSheetRows(csv); rawRows = normalizeRows(rows); refreshFiltersAndMap(); activateTab('br'); }
+    catch (e) { console.error(e); alert('Failed to load data. Ensure the Sheet is "Published to the web" and try again.'); }
+  }
+});
+elQ.addEventListener('input', applyFilters);
+elCat.addEventListener('change', applyFilters);
+elLayer.addEventListener('change', applyFilters);
+elBtnPermalink.addEventListener('click', async () => {
+  const url = buildPermalink();
+  try { await navigator.clipboard.writeText(url); alert('Permalink copied to clipboard!'); }
+  catch { prompt('Copy this permalink:', url); }
+});
+
+// ------------------- Boot --------------------
+(async function boot(){
+  // URL param overrides
+  const pMap = qs('mymap'); const pCsv = qs('csv'); const pSheet = qs('sheet');
+  if (pMap) { elMyMapsUrl.value = pMap; elFrame.src = pMap; }
+  if (pCsv) { elCsvUrl.value = pCsv; }
+  if (pSheet) { elSheetUrl.value = pSheet; elSheetFrame.src = pSheet; }
+
+  // Auto-load CSV (if present)
+  const csv = elCsvUrl.value.trim();
+  if (csv) {
+    try { const rows = await loadSheetRows(csv); rawRows = normalizeRows(rows); refreshFiltersAndMap(); }
+    catch (e) { console.warn('Auto-load failed (will rely on button):', e); }
+  }
+  activateTab('my');
+})();
+</script>
+</body>
+</html>
