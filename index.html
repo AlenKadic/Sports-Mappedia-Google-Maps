@@ -109,10 +109,6 @@
 <script>
 /* =====================
    Minimal GH Pages app w/ diagnostics
-   - CSV fetch with gviz JSON fallback
-   - Robust column/coordinate detection
-   - Status badge for quick troubleshooting
-   - URL params override (?mymap=...&csv=...&sheet=...)
    ===================== */
 
 const DEFAULTS = {
@@ -187,12 +183,9 @@ function detectColumns(rows){
       if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
     }
   }
-  // If no Layer header, reuse Category for display filters
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
 
-  // Try to find a "combined coords" column if lat/lon are missing
   if (!headerSet.has(out.Latitude) || !headerSet.has(out.Longitude)) {
-    // candidates that might contain "lat,lon" or "POINT(lon lat)"
     const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
     out._combined = candidates.length ? candidates[0] : null;
   }
@@ -203,13 +196,10 @@ function detectColumns(rows){
 function parseCoordPair(text){
   if (!text) return [NaN, NaN];
   const s = String(text).trim();
-  // "45.812, 15.977"
   let m = s.match(/^\s*([-+]?\d+(\.\d+)?)\s*[,;]\s*([-+]?\d+(\.\d+)?)\s*$/);
   if (m) return [parseFloat(m[1]), parseFloat(m[3])];
-  // "POINT(15.977 45.812)" -> note order lon lat
   m = s.match(/POINT\s*\(\s*([-+]?\d+(\.\d+)?)\s+([-+]?\d+(\.\d+)?)\s*\)/i);
   if (m) return [parseFloat(m[3]), parseFloat(m[1])];
-  // "lat=45.812 lon=15.977"
   m = s.match(/lat\s*[:=]\s*([-+]?\d+(\.\d+)?).*(lon|lng)\s*[:=]\s*([-+]?\d+(\.\d+)?)/i);
   if (m) return [parseFloat(m[1]), parseFloat(m[4])];
   return [NaN, NaN];
@@ -220,16 +210,12 @@ function normalizeRows(rows){
   return rows.map(r => {
     let lat = Number(r[cols.Latitude]);
     let lon = Number(r[cols.Longitude]);
-
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       if (cols._combined) {
         const [pLat, pLon] = parseCoordPair(r[cols._combined]);
-        if (Number.isFinite(pLat) && Number.isFinite(pLon)) {
-          lat = pLat; lon = pLon;
-        }
+        if (Number.isFinite(pLat) && Number.isFinite(pLon)) { lat = pLat; lon = pLon; }
       }
     }
-
     return {
       [COL_KEYS.name]: r[cols.Name],
       [COL_KEYS.category]: r[cols.Category],
@@ -387,10 +373,14 @@ function renderResults() {
   });
 }
 
-// Tab events
+// --------- Tab + filter events (ADDED: search/category/layer listeners) ---------
 elTabMy.addEventListener('click', () => activateTab('my'));
-elTabBr.addEventListener('click', () => activateTab('br'));
+elTabBr.addEventListener('click', () => { activateTab('br'); if (map) setTimeout(()=>map.invalidateSize(),150); });
 elTabSh.addEventListener('click', () => activateTab('sh'));
+
+elQ.addEventListener('input', applyFilters);       // <- FIX: wire search box
+elCat.addEventListener('change', applyFilters);    // <- FIX: wire category filter
+elLayer.addEventListener('change', applyFilters);  // <- FIX: wire layer filter
 elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
 
 // Boot
@@ -399,8 +389,8 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.
   const csv   = getParam('csv', DEFAULTS.csv);
   const sheet = getParam('sheet', DEFAULTS.sheet);
 
-  document.getElementById('mymapsFrame').src = mymap;
-  document.getElementById('sheetFrame').src = sheet;
+  elFrame.src = mymap;
+  elSheetFrame.src = sheet;
 
   setStatus('Loading data…');
   try {
@@ -415,54 +405,6 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.
 
   activateTab('my');
 })();
-
-// CSV → rows (with gviz fallback)
-async function loadSheetRows(sheetCsvUrl) {
-  try { return await tryPapaCsv(sheetCsvUrl); }
-  catch (e) { console.warn('CSV load failed (using gviz fallback):', e); return await loadGvizJson(sheetCsvUrl); }
-}
-function buildGvizUrl(sheetCsvUrl) {
-  const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
-  const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
-  if (!mKey || !mGid) return null;
-  return `https://docs.google.com/spreadsheets/d/e/${mKey[1]}/gviz/tq?gid=${mGid[1]}&tqx=out:json`;
-}
-function loadGvizJson(sheetCsvUrl) {
-  return new Promise((resolve, reject) => {
-    const url = buildGvizUrl(sheetCsvUrl);
-    if (!url) return reject(new Error('Could not build gviz URL from Sheet CSV URL.'));
-    window.google = window.google || {}; window.google.visualization = window.google.visualization || {};
-    window.google.visualization.Query = {
-      setResponse: function(resp) {
-        try {
-          const table = resp.table;
-          const cols = table.cols.map(c => c.label || c.id);
-          const rows = table.rows.map(r => {
-            const o = {}; r.c.forEach((cell, idx) => { const label = cols[idx] || `col${idx}`; o[label] = cell ? cell.v : null; });
-            return o;
-          });
-          resolve(rows);
-        } catch (e) { reject(e); }
-        finally { delete window.google.visualization.Query; const s = document.getElementById('gvizScriptLoader'); if (s) s.remove(); }
-      }
-    };
-    const s = document.createElement('script'); s.src = url; s.async = true; s.id = 'gvizScriptLoader';
-    s.onerror = () => { delete window.google.visualization.Query; reject(new Error('Failed to load gviz JSON.')); };
-    document.body.appendChild(s);
-  });
-}
-async function tryPapaCsv(url) {
-  return new Promise((resolve, reject) => {
-    Papa.parse(url, {
-      header: true, download: true, dynamicTyping: true,
-      complete: (res) => {
-        const rows = res.data.filter(row => Object.keys(row).some(k => String(row[k] || '').trim() !== ''));
-        resolve(rows);
-      },
-      error: (err) => reject(err)
-    });
-  });
-}
 </script>
 </body>
 </html>
