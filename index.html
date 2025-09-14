@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>My Maps + Data Browser (GitHub Pages Ready)</title>
+  <title>My Maps + Data Browser (GitHub Pages Ready • Fixed)</title>
   <meta name="description" content="Embed Google My Maps and browse the same data with search & filters powered by a published Google Sheet CSV (with gviz fallback).">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -16,9 +16,15 @@
   <style>
     html, body { height: 100%; }
     #map { height: calc(100vh - 220px); }
-    .chip { @apply inline-block px-2 py-0.5 text-xs rounded-full border; }
-    .tab-btn-active { @apply bg-white border border-b-0 font-medium; }
-    .kbd { @apply inline-flex items-center px-2 py-0.5 text-xs border rounded-md bg-gray-50; }
+    /* Plain CSS (no Tailwind @apply) */
+    .chip {
+      display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem;
+      border-radius: 9999px; border: 1px solid rgb(209 213 219);
+    }
+    .tab-btn-active {
+      background:#fff; border:1px solid rgb(209 213 219); border-bottom:0; font-weight:600;
+    }
+    .btn-tab { border:1px solid transparent; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -26,7 +32,7 @@
     <header class="mb-4 flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
-        <p class="text-sm text-gray-600">GitHub Pages–ready. Works over HTTPS. CSV first, with automatic gviz JSON fallback.</p>
+        <p class="text-sm text-gray-600">GitHub Pages–ready. CSV first, with automatic gviz JSON fallback.</p>
       </div>
       <div class="text-xs text-gray-500">
         Single-file • No backend
@@ -37,8 +43,8 @@
     <section class="mb-4 p-4 bg-white rounded-2xl shadow">
       <h2 class="font-semibold mb-2">Quick Setup</h2>
       <ol class="list-decimal list-inside text-sm space-y-1 text-gray-700">
-        <li>We've preloaded your <span class="font-semibold">My Map</span> and <span class="font-semibold">Google Sheet</span>.</li>
-        <li>You can override by URL: <span class="kbd">?mymap=&lt;embed URL&gt;&csv=&lt;sheet CSV&gt;&sheet=&lt;sheet pubhtml&gt;</span></li>
+        <li>We preloaded your <span class="font-semibold">My Map</span> and <span class="font-semibold">Google Sheet</span>.</li>
+        <li>Override via URL: <code>?mymap=&lt;embed URL&gt;&csv=&lt;sheet CSV&gt;&sheet=&lt;sheet pubhtml&gt;</code></li>
         <li>Or paste here and press <span class="font-semibold">Load Data</span>.</li>
       </ol>
 
@@ -65,14 +71,13 @@
         <button id="btnUseSample" class="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300">Use Sample Data</button>
         <button id="btnPermalink" class="px-4 py-2 rounded-xl border hover:bg-gray-50">Copy permalink</button>
       </div>
-      <p class="text-xs text-gray-500 mt-2">If CSV fetch ever fails, the app automatically falls back to <code>gviz</code> JSON (script-load), which is CORS-safe from GitHub Pages.</p>
     </section>
 
     <!-- Tabs -->
     <div class="border-b mb-3 flex items-center gap-2">
-      <button id="tab-mymap" class="px-3 py-2 rounded-t-lg tab-btn-active">My Map</button>
-      <button id="tab-browser" class="px-3 py-2 rounded-t-lg hover:bg-white/60">Data Browser</button>
-      <button id="tab-sheet" class="px-3 py-2 rounded-t-lg hover:bg-white/60">Sheet</button>
+      <button id="tab-mymap" class="btn-tab px-3 py-2 rounded-t-lg tab-btn-active">My Map</button>
+      <button id="tab-browser" class="btn-tab px-3 py-2 rounded-t-lg hover:bg-white/60">Data Browser</button>
+      <button id="tab-sheet" class="btn-tab px-3 py-2 rounded-t-lg hover:bg-white/60">Sheet</button>
     </div>
 
     <!-- My Map -->
@@ -143,22 +148,16 @@
 
 <script>
 /* =====================
-   GitHub Pages–ready app
-   - CSV fetch over HTTPS; gviz fallback
-   - URL params override fields: ?mymap=...&csv=...&sheet=...
-   - Auto-detect common column names
+   GitHub Pages–ready app (Fixed JS + CSS)
    ===================== */
 
-// ------------------- State --------------------
 let rawRows = [];
 let filtered = [];
 let markerLayer = null;
 let map = null;
 
-// Preferred column keys (app-level schema)
 const COL_KEYS = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
 
-// Common header aliases (lowercased comparisons)
 const ALIASES = {
   Name: ['name','title','naziv','ime','object','poi','place'],
   Category: ['category','type','group','kategorija','vrsta'],
@@ -170,7 +169,6 @@ const ALIASES = {
   URL: ['url','link','website','href','web','maps','gmaps']
 };
 
-// ------------------- Elements --------------------
 const elMyMapsUrl = document.getElementById('mymapsUrl');
 const elCsvUrl    = document.getElementById('csvUrl');
 const elSheetUrl  = document.getElementById('sheetUrl');
@@ -194,10 +192,14 @@ const elLayer   = document.getElementById('layer');
 const elResults = document.getElementById('results');
 const elReset   = document.getElementById('btnReset');
 
-// ------------------- Utils --------------------
 function qs(name){ return new URLSearchParams(location.search).get(name) || ''; }
-function escapeHtml(s) { return (s ?? '').toString().replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',\"'\":'&#39;'}[m])); }
+function escapeHtml(s) {
+  return (s ?? '').toString().replace(/[&<>"']/g, function(m){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m]);
+  });
+}
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+
 function activateTab(which) {
   const mapTab = which === 'my'; const browserTab = which === 'br'; const sheetTab = which === 'sh';
   elPanelMy.classList.toggle('hidden', !mapTab);
@@ -209,7 +211,6 @@ function activateTab(which) {
   if (browserTab && map) setTimeout(() => map.invalidateSize(), 150);
 }
 
-// Column auto-detect
 function detectColumns(rows){
   if (!rows.length) return COL_KEYS;
   const headerSet = new Set(Object.keys(rows[0]).map(h => h.toString()));
@@ -222,12 +223,10 @@ function detectColumns(rows){
       if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
     }
   }
-  // Keep 'Layer' if not present: default to empty; user can fill in Sheet, or we treat it as Category
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
   return out;
 }
 
-// Normalize rows to our target keys
 function normalizeRows(rows){
   const cols = detectColumns(rows);
   return rows.map(r => ({
@@ -242,7 +241,6 @@ function normalizeRows(rows){
   }));
 }
 
-// Permalink builder
 function buildPermalink(){
   const p = new URL(location.href);
   p.searchParams.set('mymap', elMyMapsUrl.value.trim());
@@ -251,25 +249,20 @@ function buildPermalink(){
   return p.toString();
 }
 
-// ------------------- Map --------------------
 function ensureMap() {
   if (map) return map;
-  map = L.map('map').setView([45.815, 15.9819], 6); // Zagreb-ish default
+  map = L.map('map').setView([45.815, 15.9819], 6);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
   markerLayer = L.layerGroup().addTo(map);
   return map;
 }
 
-// ------------------- Data Loading --------------------
 async function tryPapaCsv(url) {
   return new Promise((resolve, reject) => {
     Papa.parse(url, {
-      header: true,
-      download: true,
-      dynamicTyping: true,
+      header: true, download: true, dynamicTyping: true,
       complete: (res) => {
         const rows = res.data.filter(row => Object.keys(row).some(k => String(row[k] || '').trim() !== ''));
         resolve(rows);
@@ -278,14 +271,11 @@ async function tryPapaCsv(url) {
     });
   });
 }
-// gviz builder
 function buildGvizUrlFromSheetUrl(sheetCsvUrl) {
-  // Accept both "pub?output=csv&gid=" and "pub?gid=&...&output=csv"
   const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
   const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
   if (!mKey || !mGid) return null;
-  const key = mKey[1];
-  const gid = mGid[1];
+  const key = mKey[1]; const gid = mGid[1];
   return `https://docs.google.com/spreadsheets/d/e/${key}/gviz/tq?gid=${gid}&tqx=out:json`;
 }
 function loadGvizJson(sheetCsvUrl) {
@@ -317,7 +307,6 @@ async function loadSheetRows(sheetCsvUrl) {
   catch (e) { console.warn('CSV load failed (using gviz fallback):', e); return await loadGvizJson(sheetCsvUrl); }
 }
 
-// ------------------- Filters & Rendering --------------------
 function refreshFiltersAndMap() {
   const cats = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.category] ?? '').toString().trim()).filter(Boolean))).sort();
   const lays = Array.from(new Set(rawRows.map(r => (r[COL_KEYS.layer] ?? '').toString().trim()).filter(Boolean))).sort();
@@ -396,7 +385,7 @@ function renderResults() {
   });
 }
 
-// ------------------- Events --------------------
+// Events
 elTabMy.addEventListener('click', () => activateTab('my'));
 elTabBr.addEventListener('click', () => activateTab('br'));
 elTabSh.addEventListener('click', () => activateTab('sh'));
@@ -417,24 +406,20 @@ document.getElementById('btnLoad').addEventListener('click', async () => {
     catch (e) { console.error(e); alert('Failed to load data. Ensure the Sheet is "Published to the web" and try again.'); }
   }
 });
-elQ.addEventListener('input', applyFilters);
-elCat.addEventListener('change', applyFilters);
-elLayer.addEventListener('change', applyFilters);
 elBtnPermalink.addEventListener('click', async () => {
   const url = buildPermalink();
   try { await navigator.clipboard.writeText(url); alert('Permalink copied to clipboard!'); }
   catch { prompt('Copy this permalink:', url); }
 });
 
-// ------------------- Boot --------------------
+// Boot
 (async function boot(){
-  // URL param overrides
-  const pMap = qs('mymap'); const pCsv = qs('csv'); const pSheet = qs('sheet');
+  const pMap = new URLSearchParams(location.search).get('mymap') || '';
+  const pCsv = new URLSearchParams(location.search).get('csv') || '';
+  const pSheet = new URLSearchParams(location.search).get('sheet') || '';
   if (pMap) { elMyMapsUrl.value = pMap; elFrame.src = pMap; }
   if (pCsv) { elCsvUrl.value = pCsv; }
   if (pSheet) { elSheetUrl.value = pSheet; elSheetFrame.src = pSheet; }
-
-  // Auto-load CSV (if present)
   const csv = elCsvUrl.value.trim();
   if (csv) {
     try { const rows = await loadSheetRows(csv); rawRows = normalizeRows(rows); refreshFiltersAndMap(); }
