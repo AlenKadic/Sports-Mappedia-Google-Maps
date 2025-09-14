@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>My Maps + Data Browser (GitHub Pages Ready • Fixed)</title>
+  <title>My Maps + Data Browser (GH Pages • Minimal)</title>
   <meta name="description" content="Embed Google My Maps and browse the same data with search & filters powered by a published Google Sheet CSV (with gviz fallback).">
-  <!-- Tailwind CSS -->
+  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
@@ -15,7 +15,7 @@
   <link rel="icon" href="data:,">
   <style>
     html, body { height: 100%; }
-    #map { height: calc(100vh - 220px); }
+    #map { height: calc(100vh - 160px); } /* a bit taller now that setup panel is gone */
     /* Plain CSS (no Tailwind @apply) */
     .chip {
       display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem;
@@ -32,46 +32,10 @@
     <header class="mb-4 flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
-        <p class="text-sm text-gray-600">GitHub Pages–ready. CSV first, with automatic gviz JSON fallback.</p>
+        <p class="text-sm text-gray-600">CSV first, with automatic gviz JSON fallback. URL overrides: <code>?mymap=...&csv=...&sheet=...</code></p>
       </div>
-      <div class="text-xs text-gray-500">
-        Single-file • No backend
-      </div>
+      <div class="text-xs text-gray-500">Single-file • No backend</div>
     </header>
-
-    <!-- Config panel -->
-    <section class="mb-4 p-4 bg-white rounded-2xl shadow">
-      <h2 class="font-semibold mb-2">Quick Setup</h2>
-      <ol class="list-decimal list-inside text-sm space-y-1 text-gray-700">
-        <li>We preloaded your <span class="font-semibold">My Map</span> and <span class="font-semibold">Google Sheet</span>.</li>
-        <li>Override via URL: <code>?mymap=&lt;embed URL&gt;&csv=&lt;sheet CSV&gt;&sheet=&lt;sheet pubhtml&gt;</code></li>
-        <li>Or paste here and press <span class="font-semibold">Load Data</span>.</li>
-      </ol>
-
-      <div class="grid md:grid-cols-3 gap-3 mt-3">
-        <label class="block md:col-span-1">
-          <span class="text-sm font-medium">My Maps Embed URL</span>
-          <input id="mymapsUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
-                 value="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" />
-        </label>
-        <label class="block md:col-span-1">
-          <span class="text-sm font-medium">Google Sheet CSV URL</span>
-          <input id="csvUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
-                 value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv" />
-          <span class="text-xs text-gray-500">Publish your Sheet: File → Share → Publish to web → CSV</span>
-        </label>
-        <label class="block md:col-span-1">
-          <span class="text-sm font-medium">Sheet (pubhtml) for preview</span>
-          <input id="sheetUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
-                 value="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false" />
-        </label>
-      </div>
-      <div class="mt-3 flex flex-wrap gap-2">
-        <button id="btnLoad" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700">Load Data</button>
-        <button id="btnUseSample" class="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300">Use Sample Data</button>
-        <button id="btnPermalink" class="px-4 py-2 rounded-xl border hover:bg-gray-50">Copy permalink</button>
-      </div>
-    </section>
 
     <!-- Tabs -->
     <div class="border-b mb-3 flex items-center gap-2">
@@ -91,7 +55,7 @@
     </section>
 
     <!-- Data Browser -->
-    <section id="panel-browser" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+    <section id="panel-browser" class="hidden bg-white rounded-2xl shadow overflow-hidden mt-3">
       <div class="grid lg:grid-cols-3 gap-0">
         <aside class="lg:col-span-1 border-r p-4">
           <div class="flex items-center justify-between mb-3">
@@ -132,7 +96,7 @@
     </section>
 
     <!-- Sheet Embed -->
-    <section id="panel-sheet" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+    <section id="panel-sheet" class="hidden bg-white rounded-2xl shadow overflow-hidden mt-3">
       <div class="aspect-[16/9]">
         <iframe id="sheetFrame" class="w-full h-full" src="https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       </div>
@@ -142,14 +106,24 @@
     </section>
 
     <footer class="py-6 text-center text-xs text-gray-500">
-      Built with Google My Maps (embed) + Google Sheets (CSV or gviz JSON) + Leaflet. No server required.
+      Built with Google My Maps (embed) + Google Sheets (CSV or gviz JSON) + Leaflet.
     </footer>
   </div>
 
 <script>
 /* =====================
-   GitHub Pages–ready app (Fixed JS + CSS)
+   Minimal GH Pages app (no setup panel)
+   - Defaults below; URL params can override (?mymap=...&csv=...&sheet=...)
+   - CSV fetch with gviz JSON fallback
    ===================== */
+
+const DEFAULTS = {
+  mymap: "https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F",
+  csv: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv",
+  sheet: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pubhtml?gid=2019963302&single=true&widget=true&headers=false"
+};
+
+function getParam(name, fallback){ return new URLSearchParams(location.search).get(name) || fallback; }
 
 let rawRows = [];
 let filtered = [];
@@ -157,7 +131,6 @@ let markerLayer = null;
 let map = null;
 
 const COL_KEYS = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
-
 const ALIASES = {
   Name: ['name','title','naziv','ime','object','poi','place'],
   Category: ['category','type','group','kategorija','vrsta'],
@@ -169,9 +142,6 @@ const ALIASES = {
   URL: ['url','link','website','href','web','maps','gmaps']
 };
 
-const elMyMapsUrl = document.getElementById('mymapsUrl');
-const elCsvUrl    = document.getElementById('csvUrl');
-const elSheetUrl  = document.getElementById('sheetUrl');
 const elFrame     = document.getElementById('mymapsFrame');
 const elSheetFrame= document.getElementById('sheetFrame');
 
@@ -182,21 +152,14 @@ const elPanelMy = document.getElementById('panel-mymap');
 const elPanelBr = document.getElementById('panel-browser');
 const elPanelSh = document.getElementById('panel-sheet');
 
-const elBtnLoad   = document.getElementById('btnLoad');
-const elBtnSample = document.getElementById('btnUseSample');
-const elBtnPermalink = document.getElementById('btnPermalink');
-
 const elQ       = document.getElementById('q');
 const elCat     = document.getElementById('category');
 const elLayer   = document.getElementById('layer');
 const elResults = document.getElementById('results');
 const elReset   = document.getElementById('btnReset');
 
-function qs(name){ return new URLSearchParams(location.search).get(name) || ''; }
 function escapeHtml(s) {
-  return (s ?? '').toString().replace(/[&<>"']/g, function(m){
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m]);
-  });
+  return (s ?? '').toString().replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m]));
 }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
 
@@ -214,9 +177,7 @@ function activateTab(which) {
 function detectColumns(rows){
   if (!rows.length) return COL_KEYS;
   const headerSet = new Set(Object.keys(rows[0]).map(h => h.toString()));
-  const lowerToReal = {};
-  headerSet.forEach(h => lowerToReal[h.toLowerCase()] = h);
-
+  const lowerToReal = {}; headerSet.forEach(h => lowerToReal[h.toLowerCase()] = h);
   const out = {...COL_KEYS};
   for (const target in ALIASES){
     for (const alias of ALIASES[target]){
@@ -226,7 +187,6 @@ function detectColumns(rows){
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
   return out;
 }
-
 function normalizeRows(rows){
   const cols = detectColumns(rows);
   return rows.map(r => ({
@@ -239,14 +199,6 @@ function normalizeRows(rows){
     [COL_KEYS.notes]: r[cols.Notes],
     [COL_KEYS.url]: r[cols.URL]
   }));
-}
-
-function buildPermalink(){
-  const p = new URL(location.href);
-  p.searchParams.set('mymap', elMyMapsUrl.value.trim());
-  p.searchParams.set('csv', elCsvUrl.value.trim());
-  p.searchParams.set('sheet', elSheetUrl.value.trim());
-  return p.toString();
 }
 
 function ensureMap() {
@@ -271,16 +223,15 @@ async function tryPapaCsv(url) {
     });
   });
 }
-function buildGvizUrlFromSheetUrl(sheetCsvUrl) {
+function buildGvizUrl(sheetCsvUrl) {
   const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
   const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
   if (!mKey || !mGid) return null;
-  const key = mKey[1]; const gid = mGid[1];
-  return `https://docs.google.com/spreadsheets/d/e/${key}/gviz/tq?gid=${gid}&tqx=out:json`;
+  return `https://docs.google.com/spreadsheets/d/e/${mKey[1]}/gviz/tq?gid=${mGid[1]}&tqx=out:json`;
 }
 function loadGvizJson(sheetCsvUrl) {
   return new Promise((resolve, reject) => {
-    const url = buildGvizUrlFromSheetUrl(sheetCsvUrl);
+    const url = buildGvizUrl(sheetCsvUrl);
     if (!url) return reject(new Error('Could not build gviz URL from Sheet CSV URL.'));
     window.google = window.google || {}; window.google.visualization = window.google.visualization || {};
     window.google.visualization.Query = {
@@ -389,42 +340,25 @@ function renderResults() {
 elTabMy.addEventListener('click', () => activateTab('my'));
 elTabBr.addEventListener('click', () => activateTab('br'));
 elTabSh.addEventListener('click', () => activateTab('sh'));
-document.getElementById('btnReset').addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
-document.getElementById('btnUseSample').addEventListener('click', () => { rawRows = [
-  { [COL_KEYS.name]:'Hotel Dubrovnik', [COL_KEYS.category]:'Hotel', [COL_KEYS.layer]:'Accommodation', [COL_KEYS.lat]:45.812, [COL_KEYS.lon]:15.977, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'City center', [COL_KEYS.url]:'https://example.com' },
-  { [COL_KEYS.name]:'Muzej Mimara', [COL_KEYS.category]:'Museum', [COL_KEYS.layer]:'Attractions', [COL_KEYS.lat]:45.806, [COL_KEYS.lon]:15.969, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'Art collections', [COL_KEYS.url]:'' },
-  { [COL_KEYS.name]:'Arena Zagreb', [COL_KEYS.category]:'Stadium', [COL_KEYS.layer]:'Venues', [COL_KEYS.lat]:45.771, [COL_KEYS.lon]:15.938, [COL_KEYS.address]:'Zagreb', [COL_KEYS.notes]:'Indoor arena', [COL_KEYS.url]:'' }
-]; refreshFiltersAndMap(); activateTab('br'); });
-document.getElementById('btnLoad').addEventListener('click', async () => {
-  const url = (elMyMapsUrl.value || '').trim();
-  const csv = (elCsvUrl.value || '').trim();
-  const sheet = (elSheetUrl.value || '').trim();
-  if (url) elFrame.src = url; else alert('Please paste your My Maps embed URL.');
-  if (sheet) elSheetFrame.src = sheet;
-  if (csv) {
-    try { const rows = await loadSheetRows(csv); rawRows = normalizeRows(rows); refreshFiltersAndMap(); activateTab('br'); }
-    catch (e) { console.error(e); alert('Failed to load data. Ensure the Sheet is "Published to the web" and try again.'); }
-  }
-});
-elBtnPermalink.addEventListener('click', async () => {
-  const url = buildPermalink();
-  try { await navigator.clipboard.writeText(url); alert('Permalink copied to clipboard!'); }
-  catch { prompt('Copy this permalink:', url); }
-});
+elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
 
 // Boot
 (async function boot(){
-  const pMap = new URLSearchParams(location.search).get('mymap') || '';
-  const pCsv = new URLSearchParams(location.search).get('csv') || '';
-  const pSheet = new URLSearchParams(location.search).get('sheet') || '';
-  if (pMap) { elMyMapsUrl.value = pMap; elFrame.src = pMap; }
-  if (pCsv) { elCsvUrl.value = pCsv; }
-  if (pSheet) { elSheetUrl.value = pSheet; elSheetFrame.src = pSheet; }
-  const csv = elCsvUrl.value.trim();
-  if (csv) {
-    try { const rows = await loadSheetRows(csv); rawRows = normalizeRows(rows); refreshFiltersAndMap(); }
-    catch (e) { console.warn('Auto-load failed (will rely on button):', e); }
+  const mymap = getParam('mymap', DEFAULTS.mymap);
+  const csv   = getParam('csv', DEFAULTS.csv);
+  const sheet = getParam('sheet', DEFAULTS.sheet);
+
+  elFrame.src = mymap;
+  elSheetFrame.src = sheet;
+
+  try {
+    const rows = await loadSheetRows(csv);
+    rawRows = normalizeRows(rows);
+    refreshFiltersAndMap();
+  } catch (e) {
+    console.warn('Failed to load data:', e);
   }
+
   activateTab('my');
 })();
 </script>
