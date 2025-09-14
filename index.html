@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>My Maps + Data Browser (GH Pages • Minimal)</title>
-  <meta name="description" content="Embed Google My Maps and browse the same data with search & filters powered by a published Google Sheet CSV (with gviz fallback).">
+  <title>Sports Mappedia</title>
+  <meta name="description" content="This is unofficial fan created GIS hub for Sports events.">
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Leaflet -->
@@ -15,8 +15,7 @@
   <link rel="icon" href="data:,">
   <style>
     html, body { height: 100%; }
-    #map { height: calc(100vh - 160px); } /* a bit taller now that setup panel is gone */
-    /* Plain CSS (no Tailwind @apply) */
+    #map { height: calc(100vh - 160px); }
     .chip {
       display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem;
       border-radius: 9999px; border: 1px solid rgb(209 213 219);
@@ -31,8 +30,8 @@
   <div class="max-w-7xl mx-auto p-4">
     <header class="mb-4 flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
-        <p class="text-sm text-gray-600">CSV first, with automatic gviz JSON fallback. URL overrides: <code>?mymap=...&csv=...&sheet=...</code></p>
+        <h1 class="text-2xl font-bold">Sports Mappedia</h1>
+        <p class="text-sm text-gray-600">This is unofficial fan created GIS hub for Sports events.</p>
       </div>
       <div class="text-xs text-gray-500">Single-file • No backend</div>
     </header>
@@ -112,7 +111,7 @@
 
 <script>
 /* =====================
-   Minimal GH Pages app (no setup panel)
+   Minimal GH Pages app
    - Defaults below; URL params can override (?mymap=...&csv=...&sheet=...)
    - CSV fetch with gviz JSON fallback
    ===================== */
@@ -336,7 +335,7 @@ function renderResults() {
   });
 }
 
-// Events
+// Tab events
 elTabMy.addEventListener('click', () => activateTab('my'));
 elTabBr.addEventListener('click', () => activateTab('br'));
 elTabSh.addEventListener('click', () => activateTab('sh'));
@@ -348,8 +347,8 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.
   const csv   = getParam('csv', DEFAULTS.csv);
   const sheet = getParam('sheet', DEFAULTS.sheet);
 
-  elFrame.src = mymap;
-  elSheetFrame.src = sheet;
+  document.getElementById('mymapsFrame').src = mymap;
+  document.getElementById('sheetFrame').src = sheet;
 
   try {
     const rows = await loadSheetRows(csv);
