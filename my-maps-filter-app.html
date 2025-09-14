@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>My Maps + Data Browser</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Tab favicon -->
+  <link rel="icon" href="data:,">
+  <style>
+    html, body { height: 100%; }
+    #map { height: calc(100vh - 220px); }
+    .chip { @apply inline-block px-2 py-0.5 text-xs rounded-full border; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="max-w-7xl mx-auto p-4">
+    <header class="mb-4 flex items-center justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">My Maps + Filterable Browser</h1>
+        <p class="text-sm text-gray-600">Embed your Google My Maps and browse the same data with search & filters.</p>
+      </div>
+      <div class="text-xs text-gray-500">
+        Single-file demo • No backend
+      </div>
+    </header>
+
+    <!-- Config panel -->
+    <section class="mb-4 p-4 bg-white rounded-2xl shadow">
+      <h2 class="font-semibold mb-2">Quick Setup</h2>
+      <ol class="list-decimal list-inside text-sm space-y-1 text-gray-700">
+        <li>Paste your <span class="font-semibold">Google My Maps embed URL</span> below. In My Maps: Share &gt; Embed on my site.</li>
+        <li>Optional (recommended): Use a <span class="font-semibold">Google Sheet</span> as the <em>single source of truth</em> for your points. In My Maps you can import the same Sheet. Publish the Sheet to the web as CSV and paste the CSV URL below.</li>
+        <li>Click <span class="font-semibold">Load Data</span>. The map & filters will update instantly.</li>
+      </ol>
+
+      <div class="grid md:grid-cols-2 gap-3 mt-3">
+        <label class="block">
+          <span class="text-sm font-medium">My Maps Embed URL</span>
+          <input id="mymapsUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
+                 placeholder="https://www.google.com/maps/d/embed?mid=..." />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Published Google Sheet CSV URL (optional)</span>
+          <input id="csvUrl" class="mt-1 w-full border rounded-xl px-3 py-2"
+                 placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" />
+        </label>
+      </div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button id="btnLoad" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700">Load Data</button>
+        <button id="btnUseSample" class="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300">Use Sample Data</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-2">Tip: If your My Map already uses a Google Sheet, paste that same Sheet's published CSV here so this app and your My Map stay in sync.</p>
+    </section>
+
+    <!-- Tabs -->
+    <div class="border-b mb-3 flex items-center gap-2">
+      <button id="tab-mymap" class="px-3 py-2 rounded-t-lg bg-white border border-b-0 font-medium">My Map</button>
+      <button id="tab-browser" class="px-3 py-2 rounded-t-lg hover:bg-white/60">Data Browser</button>
+    </div>
+
+    <!-- Tab: My Maps Embed -->
+    <section id="panel-mymap" class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="aspect-[16/9]">
+        <iframe id="mymapsFrame" class="w-full h-full" src="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+      <div class="p-3 text-xs text-gray-600 border-t">
+        Note: The embedded My Map is read-only from this page. Use the Data Browser tab for searching, filtering, and quick navigation.
+      </div>
+    </section>
+
+    <!-- Tab: Data Browser -->
+    <section id="panel-browser" class="hidden bg-white rounded-2xl shadow overflow-hidden">
+      <div class="grid lg:grid-cols-3 gap-0">
+        <!-- Sidebar -->
+        <aside class="lg:col-span-1 border-r p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold">Filters</h2>
+            <button id="btnReset" class="text-xs px-2 py-1 rounded-lg border hover:bg-gray-50">Reset</button>
+          </div>
+
+          <label class="block mb-3">
+            <span class="text-sm font-medium">Search (name, address, notes)</span>
+            <input id="q" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Type to search..."/>
+          </label>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="text-sm font-medium">Category</span>
+              <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
+                <option value="">All</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-sm font-medium">Layer</span>
+              <select id="layer" class="mt-1 w-full border rounded-xl px-3 py-2">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="mt-3">
+            <span class="text-sm font-medium">Results</span>
+            <div id="results" class="mt-2 max-h-72 overflow-auto space-y-2 pr-1"></div>
+          </div>
+        </aside>
+
+        <!-- Map -->
+        <main class="lg:col-span-2">
+          <div id="map"></div>
+        </main>
+      </div>
+    </section>
+
+    <footer class="py-6 text-center text-xs text-gray-500">
+      Built with Google My Maps (embed) + Leaflet (data browser). No server required.
+    </footer>
+  </div>
+
+<script>
+// ------------------- Minimal State --------------------
+let rawRows = [];          // Full dataset (array of objects)
+let filtered = [];         // Filtered subset
+let markerLayer = null;    // Leaflet layer group
+let map = null;
+
+// Column mapping: adjust these to your Sheet headers if different
+const COLS = {
+  name: 'Name',            // e.g., "Name" or "Title"
+  category: 'Category',    // e.g., "Category" or "Type"
+  layer: 'Layer',          // e.g., "Layer" (matching My Maps layer names)
+  lat: 'Latitude',         // numeric
+  lon: 'Longitude',        // numeric
+  address: 'Address',      // optional text
+  notes: 'Notes',          // optional text
+  url: 'URL'               // optional link
+};
+
+// ------------------- UI Elements --------------------
+const elMyMapsUrl = document.getElementById('mymapsUrl');
+const elCsvUrl    = document.getElementById('csvUrl');
+const elFrame     = document.getElementById('mymapsFrame');
+const elBtnLoad   = document.getElementById('btnLoad');
+const elBtnSample = document.getElementById('btnUseSample');
+
+const elTabMy     = document.getElementById('tab-mymap');
+const elTabBr     = document.getElementById('tab-browser');
+const elPanelMy   = document.getElementById('panel-mymap');
+const elPanelBr   = document.getElementById('panel-browser');
+
+const elQ         = document.getElementById('q');
+const elCat       = document.getElementById('category');
+const elLayer     = document.getElementById('layer');
+const elResults   = document.getElementById('results');
+const elReset     = document.getElementById('btnReset');
+
+// ------------------- Tabs --------------------
+function setTab(which) {
+  const isMy = which === 'my';
+  elPanelMy.classList.toggle('hidden', !isMy);
+  elPanelBr.classList.toggle('hidden',  isMy);
+  elTabMy.classList.toggle('bg-white', isMy);
+  elTabMy.classList.toggle('border', isMy);
+  elTabMy.classList.toggle('border-b-0', isMy);
+  elTabMy.classList.toggle('font-medium', isMy);
+  elTabBr.classList.toggle('bg-white', !isMy);
+  elTabBr.classList.toggle('border', !isMy);
+  elTabBr.classList.toggle('border-b-0', !isMy);
+  elTabBr.classList.toggle('font-medium', !isMy);
+  if (!isMy && map) {
+    setTimeout(() => { map.invalidateSize(); }, 150);
+  }
+}
+elTabMy.addEventListener('click', () => setTab('my'));
+elTabBr.addEventListener('click', () => setTab('br'));
+
+// ------------------- Map --------------------
+function ensureMap() {
+  if (map) return map;
+  map = L.map('map').setView([45.815, 15.9819], 6); // Default: Zagreb-ish
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  markerLayer = L.layerGroup().addTo(map);
+  return map;
+}
+
+// ------------------- Data Loading --------------------
+async function loadCsv(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      header: true,
+      download: true,
+      dynamicTyping: true,
+      complete: (res) => {
+        resolve(res.data.filter(row => Object.keys(row).length > 0));
+      },
+      error: reject
+    });
+  });
+}
+
+function useSampleData() {
+  // Simple demo dataset (two layers, categories)
+  rawRows = [
+    { [COLS.name]:'Hotel Dubrovnik', [COLS.category]:'Hotel', [COLS.layer]:'Accommodation', [COLS.lat]:45.812, [COLS.lon]:15.977, [COLS.address]:'Zagreb', [COLS.notes]:'City center', [COLS.url]:'https://example.com' },
+    { [COLS.name]:'Muzej Mimara', [COLS.category]:'Museum', [COLS.layer]:'Attractions', [COLS.lat]:45.806, [COLS.lon]:15.969, [COLS.address]:'Zagreb', [COLS.notes]:'Art collections', [COLS.url]:'' },
+    { [COLS.name]:'Arena Zagreb', [COLS.category]:'Stadium', [COLS.layer]:'Venues', [COLS.lat]:45.771, [COLS.lon]:15.938, [COLS.address]:'Zagreb', [COLS.notes]:'Indoor arena', [COLS.url]:'' },
+    { [COLS.name]:'Hotel Park Split', [COLS.category]:'Hotel', [COLS.layer]:'Accommodation', [COLS.lat]:43.505, [COLS.lon]:16.441, [COLS.address]:'Split', [COLS.notes]:'Near beach', [COLS.url]:'' },
+    { [COLS.name]:'Diocletian Palace', [COLS.category]:'Historic', [COLS.layer]:'Attractions', [COLS.lat]:43.509, [COLS.lon]:16.439, [COLS.address]:'Split', [COLS.notes]:'UNESCO site', [COLS.url]:'' }
+  ];
+  refreshFiltersAndMap();
+}
+
+// ------------------- Filters & Rendering --------------------
+function refreshFiltersAndMap() {
+  // Build distinct category & layer lists
+  const cats = Array.from(new Set(rawRows.map(r => (r[COLS.category] ?? '').toString().trim()).filter(Boolean))).sort();
+  const lays = Array.from(new Set(rawRows.map(r => (r[COLS.layer] ?? '').toString().trim()).filter(Boolean))).sort();
+
+  // Populate selects (keep "All" at top)
+  elCat.innerHTML = '<option value="">All</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  elLayer.innerHTML = '<option value="">All</option>' + lays.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+
+  applyFilters();
+}
+
+function applyFilters() {
+  const q = elQ.value.trim().toLowerCase();
+  const c = elCat.value;
+  const l = elLayer.value;
+
+  filtered = rawRows.filter(r => {
+    const inCat = !c || (r[COLS.category] ?? '').toString() === c;
+    const inLay = !l || (r[COLS.layer] ?? '').toString() === l;
+    const text = [
+      r[COLS.name], r[COLS.address], r[COLS.notes], r[COLS.category], r[COLS.layer]
+    ].map(v => (v ?? '').toString().toLowerCase()).join(' • ');
+    const inQ = !q || text.includes(q);
+    // Require valid coords
+    const lat = Number(r[COLS.lat]);
+    const lon = Number(r[COLS.lon]);
+    const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
+    return inCat && inLay && inQ && coordsOk;
+  });
+
+  // Render list
+  renderResults();
+
+  // Render markers
+  ensureMap();
+  markerLayer.clearLayers();
+  const bounds = [];
+  filtered.forEach((r, idx) => {
+    const lat = Number(r[COLS.lat]), lon = Number(r[COLS.lon]);
+    const marker = L.marker([lat, lon]).addTo(markerLayer);
+    const title = escapeHtml(r[COLS.name] ?? 'Untitled');
+    const cat = escapeHtml(r[COLS.category] ?? '');
+    const lay = escapeHtml(r[COLS.layer] ?? '');
+    const addr = escapeHtml(r[COLS.address] ?? '');
+    const notes = escapeHtml(r[COLS.notes] ?? '');
+    const url = (r[COLS.url] ?? '').toString().trim();
+    const html = `
+      <div class="text-sm">
+        <div class="font-semibold">${title}</div>
+        <div class="mt-1 space-x-1">
+          ${cat ? `<span class="chip">${cat}</span>` : ''}
+          ${lay ? `<span class="chip">${lay}</span>` : ''}
+        </div>
+        ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
+        ${notes ? `<div class="mt-1 text-xs">${notes}</div>` : ''}
+        ${url ? `<div class="mt-2"><a href="${escapeAttr(url)}" target="_blank" class="text-blue-600 underline">Open link</a></div>` : ''}
+      </div>`;
+    marker.bindPopup(html);
+    bounds.push([lat, lon]);
+    // Click list item pans to marker
+    marker._myIdx = idx;
+  });
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding: [20,20] });
+  }
+}
+
+function renderResults() {
+  elResults.innerHTML = '';
+  if (!filtered.length) {
+    elResults.innerHTML = `<div class="text-xs text-gray-500">No results.</div>`;
+    return;
+  }
+  filtered.forEach((r, i) => {
+    const title = escapeHtml(r[COLS.name] ?? 'Untitled');
+    const cat = escapeHtml(r[COLS.category] ?? '');
+    const lay = escapeHtml(r[COLS.layer] ?? '');
+    const addr = escapeHtml(r[COLS.address] ?? '');
+    const url = (r[COLS.url] ?? '').toString().trim();
+
+    const card = document.createElement('div');
+    card.className = 'border rounded-xl p-2 hover:bg-gray-50 cursor-pointer';
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="font-medium">${title}</div>
+          <div class="mt-1 space-x-1">
+            ${cat ? `<span class="chip">${cat}</span>` : ''}
+            ${lay ? `<span class="chip">${lay}</span>` : ''}
+          </div>
+          ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
+        </div>
+        ${url ? `<a href="${escapeAttr(url)}" target="_blank" class="text-xs text-blue-600 underline">Open</a>` : ''}
+      </div>
+    `;
+    card.addEventListener('click', () => {
+      const lat = Number(r[COLS.lat]), lon = Number(r[COLS.lon]);
+      ensureMap();
+      map.setView([lat, lon], 15);
+      // Find marker and open popup
+      let found = null;
+      markerLayer.eachLayer(m => {
+        const p = m.getLatLng();
+        if (Math.abs(p.lat - lat) < 1e-9 && Math.abs(p.lng - lon) < 1e-9) found = m;
+      });
+      if (found) found.openPopup();
+      setTab('br');
+    });
+    elResults.appendChild(card);
+  });
+}
+
+// ------------------- Utils --------------------
+function escapeHtml(s) {
+  return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/"/g, '&quot;');
+}
+
+// ------------------- Events --------------------
+elBtnLoad.addEventListener('click', async () => {
+  const url = (elMyMapsUrl.value || '').trim();
+  const csv = (elCsvUrl.value || '').trim();
+
+  if (url) {
+    elFrame.src = url;
+  } else {
+    alert('Please paste your My Maps embed URL.');
+  }
+
+  if (csv) {
+    try {
+      rawRows = await loadCsv(csv);
+      refreshFiltersAndMap();
+      setTab('br');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to load CSV – please double check the URL is publicly published.');
+    }
+  } else {
+    // No CSV given; keep previous data (if any) or show empty
+    if (!rawRows.length) {
+      useSampleData();
+    } else {
+      refreshFiltersAndMap();
+    }
+  }
+});
+
+elBtnSample.addEventListener('click', () => {
+  useSampleData();
+  setTab('br');
+});
+
+elQ.addEventListener('input', applyFilters);
+elCat.addEventListener('change', applyFilters);
+elLayer.addEventListener('change', applyFilters);
+elReset.addEventListener('click', () => {
+  elQ.value = '';
+  elCat.value = '';
+  elLayer.value = '';
+  applyFilters();
+});
+
+// Default to My Map tab until data loads
+setTab('my');
+
+</script>
+</body>
+</html>
