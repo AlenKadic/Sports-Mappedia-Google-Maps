@@ -7,18 +7,15 @@
   <meta name="description" content="This is unofficial fan created GIS hub for Sports events.">
   <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
   <!-- PapaParse for CSV parsing -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <link rel="icon" href="data:,">
   <style>
     html, body { height: 100%; }
-    #map { height: calc(100vh - 160px); }
     .chip { display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem; border-radius: 9999px; border: 1px solid rgb(209 213 219); }
     .tab-btn-active { background:#fff; border:1px solid rgb(209 213 219); border-bottom:0; font-weight:600; }
     .btn-tab { border:1px solid transparent; }
+    .embedTall { height: calc(100vh - 220px); } /* tall iframe in Data Browser */
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -43,14 +40,14 @@
     <!-- My Map -->
     <section id="panel-mymap" class="bg-white rounded-2xl shadow overflow-hidden">
       <div class="aspect-[16/9]">
-        <iframe id="mymapsFrame" class="w-full h-full" src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <iframe id="mymapsFrameMain" class="w-full h-full" src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       </div>
       <div class="p-3 text-xs text-gray-600 border-t">
-        The embedded My Map is read-only here. Use the Data Browser tab to search & filter the CSV/JSON data.
+        This is your Google My Maps embed.
       </div>
     </section>
 
-    <!-- Data Browser -->
+    <!-- Data Browser (same My Map on the right) -->
     <section id="panel-browser" class="hidden bg-white rounded-2xl shadow overflow-hidden mt-3">
       <div class="grid lg:grid-cols-3 gap-0">
         <aside class="lg:col-span-1 border-r p-4">
@@ -61,7 +58,11 @@
 
           <label class="block mb-3">
             <span class="text-sm font-medium">Search (name, address, notes)</span>
-            <input id="q" class="mt-1 w-full border rounded-xl px-3 py-2" placeholder="Type to search..."/>
+            <div class="mt-1 flex gap-2">
+              <input id="q" class="w-full border rounded-xl px-3 py-2" placeholder="Type to search…"/>
+              <button id="btnSearch" class="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50">Search</button>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">Press Enter or click Search</div>
           </label>
 
           <div class="grid grid-cols-2 gap-2">
@@ -86,8 +87,12 @@
         </aside>
 
         <main class="lg:col-span-2">
-          <div id="map"></div>
+          <!-- The same My Map, just shown alongside the filters -->
+          <iframe id="mymapsFrameBrowser" class="w-full embedTall" src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
         </main>
+      </div>
+      <div class="p-3 text-xs text-gray-600 border-t">
+        Note: Google My Maps iframes can’t be controlled by outside pages (no API). Results include a link to open the location in Google Maps.
       </div>
     </section>
 
@@ -102,13 +107,13 @@
     </section>
 
     <footer class="py-6 text-center text-xs text-gray-500">
-      Built with Google My Maps (embed) + Google Sheets (CSV or gviz JSON) + Leaflet.
+      Built with Google My Maps (embed) + Google Sheets (CSV or gviz JSON).
     </footer>
   </div>
 
 <script>
 /* =====================
-   Minimal GH Pages app w/ diagnostics
+   Data loader + filters (works with My Maps on both tabs)
    ===================== */
 
 const DEFAULTS = {
@@ -121,24 +126,23 @@ function getParam(name, fallback){ return new URLSearchParams(location.search).g
 
 let rawRows = [];
 let filtered = [];
-let markerLayer = null;
-let map = null;
 
 const COL_KEYS = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
 const ALIASES = {
-  Name: ['name','title','naziv','ime','object','poi','place'],
+  Name: ['name','title','label','place name','naziv','ime'],
   Category: ['category','type','group','kategorija','vrsta'],
-  Layer: ['layer','sloj','list','sheet','tab'],
-  Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing','lat (y)','lat_y'],
-  Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting','lon (x)','lon_x'],
+  Layer: ['layer','layer name','folder','folder name','sheet','tab','list','group'],
+  Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing'],
+  Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting'],
   Address: ['address','location','addr','adresa','mjesto','city','town'],
   Notes: ['notes','description','desc','napomena','opis','info'],
   URL: ['url','link','website','href','web','maps','gmaps']
 };
 
-const elFrame     = document.getElementById('mymapsFrame');
-const elSheetFrame= document.getElementById('sheetFrame');
 const elStatus    = document.getElementById('status');
+const elM1        = document.getElementById('mymapsFrameMain');
+const elM2        = document.getElementById('mymapsFrameBrowser');
+const elSheet     = document.getElementById('sheetFrame');
 
 const elTabMy   = document.getElementById('tab-mymap');
 const elTabBr   = document.getElementById('tab-browser');
@@ -152,12 +156,10 @@ const elCat     = document.getElementById('category');
 const elLayer   = document.getElementById('layer');
 const elResults = document.getElementById('results');
 const elReset   = document.getElementById('btnReset');
+const elBtnSearch = document.getElementById('btnSearch');
 
 function setStatus(text, ok=true){ elStatus.textContent = text; elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444'; elStatus.style.color = ok ? '#111827' : '#991b1b'; }
-
-function escapeHtml(s) {
-  return (s ?? '').toString().replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m]));
-}
+function escapeHtml(s) { return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m])); }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
 
 function activateTab(which) {
@@ -168,7 +170,6 @@ function activateTab(which) {
   elTabMy.classList.toggle('tab-btn-active', mapTab);
   elTabBr.classList.toggle('tab-btn-active', browserTab);
   elTabSh.classList.toggle('tab-btn-active', sheetTab);
-  if (browserTab && map) setTimeout(() => map.invalidateSize(), 150);
 }
 
 // ---------- Column detection & coordinate parsing ----------
@@ -189,7 +190,6 @@ function detectColumns(rows){
     const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
     out._combined = candidates.length ? candidates[0] : null;
   }
-
   return out;
 }
 
@@ -227,17 +227,6 @@ function normalizeRows(rows){
       [COL_KEYS.url]: r[cols.URL]
     };
   });
-}
-
-// ---------- Map ----------
-function ensureMap() {
-  if (map) return map;
-  map = L.map('map').setView([45.815, 15.9819], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
-  markerLayer = L.layerGroup().addTo(map);
-  return map;
 }
 
 // ---------- Data loading ----------
@@ -296,6 +285,7 @@ function refreshFiltersAndMap() {
   elLayer.innerHTML = '<option value="">All</option>' + lays.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
   applyFilters();
 }
+
 function applyFilters() {
   const q = (elQ.value || '').trim().toLowerCase();
   const c = elCat.value;
@@ -313,38 +303,10 @@ function applyFilters() {
     return inCat && inLay && inQ && coordsOk;
   });
 
-  const valid = filtered.length;
-  setStatus(`Loaded ${before} rows • Showing ${valid} with coordinates`, true);
-
+  setStatus(`Loaded ${before} rows • Showing ${filtered.length} with coordinates`, true);
   renderResults();
-  ensureMap();
-  markerLayer.clearLayers();
-  const bounds = [];
-  filtered.forEach((r) => {
-    const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]);
-    const marker = L.marker([lat, lon]).addTo(markerLayer);
-    const title = escapeHtml(r[COL_KEYS.name] ?? 'Untitled');
-    const cat = escapeHtml(r[COL_KEYS.category] ?? '');
-    const lay = escapeHtml(r[COL_KEYS.layer] ?? '');
-    const addr = escapeHtml(r[COL_KEYS.address] ?? '');
-    const notes = escapeHtml(r[COL_KEYS.notes] ?? '');
-    const url = (r[COL_KEYS.url] ?? '').toString().trim();
-    const html = `
-      <div class="text-sm">
-        <div class="font-semibold">${title}</div>
-        <div class="mt-1 space-x-1">
-          ${cat ? `<span class="chip">${cat}</span>` : ''}
-          ${lay ? `<span class="chip">${lay}</span>` : ''}
-        </div>
-        ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
-        ${notes ? `<div class="mt-1 text-xs">${notes}</div>` : ''}
-        ${url ? `<div class="mt-2"><a href="${escapeAttr(url)}" target="_blank" class="text-blue-600 underline">Open link</a></div>` : ''}
-      </div>`;
-    marker.bindPopup(html);
-    bounds.push([lat, lon]);
-  });
-  if (bounds.length) map.fitBounds(bounds, { padding: [20,20] });
 }
+
 function renderResults() {
   elResults.innerHTML = '';
   if (!filtered.length) { elResults.innerHTML = `<div class="text-xs text-gray-500">No results.</div>`; return; }
@@ -354,8 +316,11 @@ function renderResults() {
     const lay = escapeHtml(r[COL_KEYS.layer] ?? '');
     const addr = escapeHtml(r[COL_KEYS.address] ?? '');
     const url = (r[COL_KEYS.url] ?? '').toString().trim();
+    const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]);
+    const gmaps = `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lon)}`;
+
     const card = document.createElement('div');
-    card.className = 'border rounded-xl p-2 hover:bg-gray-50 cursor-pointer';
+    card.className = 'border rounded-xl p-2 hover:bg-gray-50';
     card.innerHTML = `
       <div class="flex items-start justify-between gap-2">
         <div>
@@ -366,21 +331,24 @@ function renderResults() {
           </div>
           ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
         </div>
-        ${url ? `<a href="${escapeAttr(url)}" target="_blank" class="text-xs text-blue-600 underline">Open</a>` : ''}
+        <div class="flex flex-col items-end gap-1">
+          <a href="${gmaps}" target="_blank" class="text-xs text-blue-600 underline">Open in Google Maps</a>
+          ${url ? `<a href="${escapeAttr(url)}" target="_blank" class="text-xs text-blue-600 underline">Open link</a>` : ''}
+        </div>
       </div>`;
-    card.addEventListener('click', () => { const lat = Number(r[COL_KEYS.lat]), lon = Number(r[COL_KEYS.lon]); ensureMap(); map.setView([lat, lon], 15); activateTab('br'); });
     elResults.appendChild(card);
   });
 }
 
-// --------- Tab + filter events (ADDED: search/category/layer listeners) ---------
+// --------- Tab + filter events ---------
 elTabMy.addEventListener('click', () => activateTab('my'));
-elTabBr.addEventListener('click', () => { activateTab('br'); if (map) setTimeout(()=>map.invalidateSize(),150); });
+elTabBr.addEventListener('click', () => activateTab('br'));
 elTabSh.addEventListener('click', () => activateTab('sh'));
 
-elQ.addEventListener('input', applyFilters);       // <- FIX: wire search box
-elCat.addEventListener('change', applyFilters);    // <- FIX: wire category filter
-elLayer.addEventListener('change', applyFilters);  // <- FIX: wire layer filter
+document.getElementById('btnSearch').addEventListener('click', applyFilters);
+elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyFilters(); });
+elCat.addEventListener('change', applyFilters);
+elLayer.addEventListener('change', applyFilters);
 elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
 
 // Boot
@@ -389,8 +357,10 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.
   const csv   = getParam('csv', DEFAULTS.csv);
   const sheet = getParam('sheet', DEFAULTS.sheet);
 
-  elFrame.src = mymap;
-  elSheetFrame.src = sheet;
+  // Same My Map on both tabs
+  elM1.src = mymap;
+  elM2.src = mymap;
+  elSheet.src = sheet;
 
   setStatus('Loading data…');
   try {
