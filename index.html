@@ -44,16 +44,10 @@
             <div class="text-xs text-gray-500 mt-1">Runs as you type, or click Search / press Enter.</div>
           </label>
 
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 gap-2">
             <label class="block">
               <span class="text-sm font-medium">Category</span>
               <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
-                <option value="">All</option>
-              </select>
-            </label>
-            <label class="block">
-              <span class="text-sm font-medium">Layer</span>
-              <select id="layer" class="mt-1 w-full border rounded-xl px-3 py-2">
                 <option value="">All</option>
               </select>
             </label>
@@ -69,7 +63,7 @@
         </aside>
 
         <main class="lg:col-span-2">
-          <!-- Same My Maps embed shown beside results (read-only) -->
+          <!-- Context map (read-only My Maps embed) -->
           <iframe id="mymapsBrowser" class="w-full embedTall"
                   src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F"
                   loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
@@ -114,7 +108,6 @@ const ALIASES = {
 const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
 const elCat = document.getElementById('category');
-const elLayer = document.getElementById('layer');
 const elResults = document.getElementById('results');
 const elReset = document.getElementById('btnReset');
 const elBtnSearch = document.getElementById('btnSearch');
@@ -232,24 +225,21 @@ function normalizeRows(rows){
 /* ===== Filters & render ===== */
 function refreshFilters(){
   const cats = Array.from(new Set(rawRows.map(r => (r[K.category] ?? '').toString().trim()).filter(Boolean))).sort();
-  const lays = Array.from(new Set(rawRows.map(r => (r[K.layer] ?? '').toString().trim()).filter(Boolean))).sort();
-  elCat.innerHTML = '<option value="">All</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-  elLayer.innerHTML = '<option value="">All</option>' + lays.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+  document.getElementById('category').innerHTML =
+    '<option value="">All</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 }
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
   const c = elCat.value;
-  const l = elLayer.value;
 
   filtered = rawRows.filter(r => {
     const inCat = !c || (r[K.category] ?? '').toString() === c;
-    const inLay = !l || (r[K.layer] ?? '').toString() === l;
     const text = [r[K.name], r[K.address], r[K.notes], r[K.category], r[K.layer]]
       .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
     const inQ = !q || text.includes(q);
     const lat = Number(r[K.lat]), lon = Number(r[K.lon]);
     const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
-    return inCat && inLay && inQ && coordsOk;
+    return inCat && inQ && coordsOk;
   });
 
   setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`, true);
@@ -299,8 +289,7 @@ elQ.addEventListener('input', applyFiltersDebounced);
 elBtnSearch.addEventListener('click', applyFilters);
 elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyFilters(); });
 elCat.addEventListener('change', applyFilters);
-elLayer.addEventListener('change', applyFilters);
-elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; elLayer.value=''; applyFilters(); });
+elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; applyFilters(); });
 
 /* ===== Boot ===== */
 (async function boot(){
