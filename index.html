@@ -13,7 +13,7 @@
   <style>
     html, body { height: 100%; }
     .chip { display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem; border-radius: 9999px; border: 1px solid rgb(209 213 219); }
-    .embedTall { height: calc(100vh - 220px); }
+    .embedTall { height: 70vh; } /* map below the filters */
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -26,16 +26,12 @@
       <span id="status" class="text-xs px-2 py-1 rounded-lg border bg-white">Loading…</span>
     </header>
 
-    <!-- Data Browser (only) -->
-    <section class="bg-white rounded-2xl shadow overflow-hidden">
-      <div class="grid lg:grid-cols-3 gap-0">
-        <aside class="lg:col-span-1 border-r p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-semibold">Filters</h2>
-            <button id="btnReset" class="text-xs px-2 py-1 rounded-lg border hover:bg-gray-50">Reset</button>
-          </div>
-
-          <label class="block mb-3">
+    <!-- Controls (top) -->
+    <section class="bg-white rounded-2xl shadow p-4 mb-3">
+      <div class="flex flex-col gap-3">
+        <!-- Search + Category row -->
+        <div class="flex flex-col md:flex-row md:items-end gap-3">
+          <label class="flex-1">
             <span class="text-sm font-medium">Search (name, address, notes)</span>
             <div class="mt-1 flex gap-2">
               <input id="q" class="w-full border rounded-xl px-3 py-2" placeholder="Type to search…"/>
@@ -44,31 +40,35 @@
             <div class="text-xs text-gray-500 mt-1">Runs as you type, or click Search / press Enter.</div>
           </label>
 
-          <div class="grid grid-cols-1 gap-2">
-            <label class="block">
-              <span class="text-sm font-medium">Category</span>
-              <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
-                <option value="">All</option>
-              </select>
-            </label>
-          </div>
+          <label class="w-full md:w-64">
+            <span class="text-sm font-medium">Category</span>
+            <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
+              <option value="">All</option>
+            </select>
+          </label>
 
-          <div class="mt-3">
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium">Results</span>
-              <span id="counts" class="text-xs text-gray-500">0</span>
-            </div>
-            <div id="results" class="mt-2 max-h-72 overflow-auto space-y-2 pr-1"></div>
+          <div class="flex items-center gap-2">
+            <button id="btnReset" class="text-xs px-3 py-2 rounded-lg border hover:bg-gray-50 h-10">Reset</button>
           </div>
-        </aside>
+        </div>
 
-        <main class="lg:col-span-2">
-          <!-- Context map (read-only My Maps embed) -->
-          <iframe id="mymapsBrowser" class="w-full embedTall"
-                  src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F"
-                  loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-        </main>
+        <!-- Results list (compact scroller) -->
+        <div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium">Results</span>
+            <span id="counts" class="text-xs text-gray-500">0</span>
+          </div>
+          <div id="results" class="mt-2 max-h-56 overflow-auto space-y-2 pr-1"></div>
+        </div>
       </div>
+    </section>
+
+    <!-- Map (bottom) -->
+    <section class="bg-white rounded-2xl shadow overflow-hidden">
+      <!-- Context map (read-only My Maps embed) -->
+      <iframe id="mymapsBrowser" class="w-full embedTall"
+              src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F"
+              loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       <div class="p-3 text-xs text-gray-600 border-t">
         Note: My Maps iframes are read-only from this page; each result has an “Open in Google Maps” link.
       </div>
@@ -293,7 +293,7 @@ elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; applyFil
 
 /* ===== Boot ===== */
 (async function boot(){
-  elM2.src = SRC_MYMAP; // keep the context map visible; read-only
+  elM2.src = SRC_MYMAP; // context map below
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_CSV);
