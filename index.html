@@ -30,14 +30,14 @@
     <section class="bg-white rounded-2xl shadow p-4 mb-3">
       <div class="flex flex-col gap-3">
         <!-- Search + Category row -->
-        <div class="flex flex-col md:flex-row md:items-end gap-3">
+        <div class="flex flex-col md:flex-row md:items-start gap-3">
           <label class="flex-1">
             <span class="text-sm font-medium">Search (name, address, notes)</span>
             <div class="mt-1 flex gap-2">
               <input id="q" class="w-full border rounded-xl px-3 py-2" placeholder="Type to search…"/>
               <button id="btnSearch" class="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50">Search</button>
             </div>
-            <div class="text-xs text-gray-500 mt-1">Runs as you type, or click Search / press Enter.</div>
+            <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results. (Typing alone won’t show results.)</div>
           </label>
 
           <label class="w-full md:w-64">
@@ -47,13 +47,13 @@
             </select>
           </label>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-start md:pt-6">
             <button id="btnReset" class="text-xs px-3 py-2 rounded-lg border hover:bg-gray-50 h-10">Reset</button>
           </div>
         </div>
 
-        <!-- Results list (compact scroller) -->
-        <div>
+        <!-- Results list (hidden until Search/Enter) -->
+        <div id="resultsBlock" class="hidden">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium">Results</span>
             <span id="counts" class="text-xs text-gray-500">0</span>
@@ -92,6 +92,7 @@ const SRC_CSV   = P.get("csv")   || DEFAULTS.csv;
 /* ===== State ===== */
 let rawRows = [];
 let filtered = [];
+let resultsVisible = false; // hide results until Search/Enter
 const K = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
 const ALIASES = {
   Name: ['name','title','label','place','poi','naziv','ime'],
@@ -109,6 +110,7 @@ const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
 const elCat = document.getElementById('category');
 const elResults = document.getElementById('results');
+const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
 const elBtnSearch = document.getElementById('btnSearch');
 const elCounts = document.getElementById('counts');
@@ -118,6 +120,7 @@ const elM2 = document.getElementById('mymapsBrowser');
 function setStatus(text, ok=true){ elStatus.textContent = text; elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444'; elStatus.style.color = ok ? '#111827' : '#991b1b'; }
 function escapeHtml(s){ return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); resultsVisible = !!show; }
 
 /* ===== CSV / gviz loader ===== */
 async function tryPapaCsv(url){
@@ -242,8 +245,8 @@ function applyFilters(){
     return inCat && inQ && coordsOk;
   });
 
-  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`, true);
   elCounts.textContent = String(filtered.length);
+  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`, true);
   renderResults();
 }
 function renderResults(){
@@ -283,23 +286,29 @@ function renderResults(){
 }
 
 /* ===== Events ===== */
-function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
-const applyFiltersDebounced = debounce(applyFilters, 200);
-elQ.addEventListener('input', applyFiltersDebounced);
-elBtnSearch.addEventListener('click', applyFilters);
-elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyFilters(); });
-elCat.addEventListener('change', applyFilters);
-elReset.addEventListener('click', () => { elQ.value=''; elCat.value=''; applyFilters(); });
+function doSearch(){ showResults(true); applyFilters(); }
+elBtnSearch.addEventListener('click', doSearch);
+elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+// After results are shown once, category changes will re-filter immediately.
+// If results are still hidden, category changes won't show them.
+elCat.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
+
+elReset.addEventListener('click', () => {
+  elQ.value=''; elCat.value='';
+  showResults(false);
+  setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
+});
 
 /* ===== Boot ===== */
 (async function boot(){
-  elM2.src = SRC_MYMAP; // context map below
+  document.getElementById('mymapsBrowser').src = SRC_MYMAP; // context map below
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_CSV);
     rawRows = normalizeRows(rows);
     refreshFilters();
-    applyFilters();
+    setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
   }catch(e){
     console.error(e);
     setStatus('Failed to load data — check CSV URL & publish settings', false);
