@@ -76,9 +76,7 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
-  // Your published CSV (anonymous)
   sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
-  // If JSON fallback is needed, we’ll target this tab:
   sheet: "All"
 };
 const P = new URLSearchParams(location.search);
@@ -92,7 +90,7 @@ let resultsVisible = false;
 
 const K = {
   name:'Name',
-  layer:'Layer',   // main facet
+  layer:'Layer',
   lat:'Latitude',
   lon:'Longitude',
   address:'Address',
@@ -113,7 +111,7 @@ const ALIASES = {
 /* ===== DOM ===== */
 const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
-const elLayerSelect = document.getElementById('category'); // same element id, but Layer-only
+const elLayerSelect = document.getElementById('category');
 const elResults = document.getElementById('results');
 const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
@@ -227,7 +225,6 @@ function detectColumns(rows){
   return out;
 }
 
-// robust number parser
 function toNumberLoose(v){
   if (typeof v==='number') return v;
   const s=String(v??'').trim();
@@ -279,7 +276,7 @@ function refreshFilters(){
   elLayerSelect.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
 
-/* ------------- CHANGED: do NOT require coordinates ------------- */
+/* Do NOT require coordinates anymore */
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
   const selLayer = elLayerSelect.value;
@@ -293,8 +290,6 @@ function applyFilters(){
       .join(' • ');
 
     const inQ = !q || text.includes(q);
-
-    // Do NOT require coordinates anymore
     return inLayer && inQ;
   });
 
@@ -302,7 +297,6 @@ function applyFilters(){
   setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length}`);
   renderResults();
 }
-/* --------------------------------------------------------------- */
 
 function renderResults(){
   elResults.innerHTML='';
@@ -313,12 +307,20 @@ function renderResults(){
   filtered.forEach(r=>{
     const title=escapeHtml(r[K.name] ?? 'Untitled');
     const lay=escapeHtml((r[K.layer] ?? '').toString().trim());
-    const addr=escapeHtml(r[K.address] ?? '');
+    const addrRaw = (r[K.address] ?? '').toString().trim();
+    const addr=escapeHtml(addrRaw);
     const url=(r[K.url] ?? '').toString().trim();
+
     const lat=toNumberLoose(r[K.lat]), lon=toNumberLoose(r[K.lon]);
-    const gmaps=(Number.isFinite(lat) && Number.isFinite(lon))
-      ? `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lon)}`
-      : '';
+
+    // Prefer precise lat/lon link; otherwise fall back to an address search
+    let gmaps = '';
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      gmaps = `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lon)}`;
+    } else if (addrRaw) {
+      // Using the newer search endpoint
+      gmaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addrRaw)}`;
+    }
 
     const card=document.createElement('div');
     card.className='border rounded-xl p-2 hover:bg-gray-50';
