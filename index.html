@@ -67,7 +67,7 @@
     <!-- Map (bottom) -->
     <section class="bg-white rounded-2xl shadow overflow-hidden">
       <iframe id="mymapsBrowser" class="w-full embedTall"
-              src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F"
+              src=""
               loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       <div class="p-3 text-xs text-gray-600 border-t">
         Note: My Maps iframes are read-only from this page; each result has an “Open in Google Maps” link.
@@ -78,8 +78,10 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
-  mymap: "https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F",
-  csv:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRPslbQfk_lxbc0FXX6IrdJEh1cfnuSpJRITDM9X4vxxXbVcimphgQJ1G4dVSJFCuloUAcrLkod-U9-/pub?gid=2019963302&single=true&output=csv"
+  // NEW My Map (embed version of the link you provided)
+  mymap: "https://www.google.com/maps/d/embed?mid=1U8S4d0slm-Ttcd09aPGu2cSgmb-jyt8&ehbc=2E312F",
+  // NEW Sheet: first tab (gid=0). Change gid if your data lives on another tab.
+  csv:   "https://docs.google.com/spreadsheets/d/1xzd2arCkBwqT71QmWygNnsKl221IhbZNMJKLis0m8Zw/export?format=csv&gid=0"
 };
 const P = new URLSearchParams(location.search);
 const SRC_MYMAP = P.get("mymap") || DEFAULTS.mymap;
@@ -113,7 +115,7 @@ const elCounts = document.getElementById('counts');
 
 /* ===== Helpers ===== */
 function setStatus(text, ok=true){
-  // Keep updating (useful in dev / screen readers), but it remains visually hidden.
+  // Visually hidden but updated for accessibility/dev.
   elStatus.textContent = text;
   elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444';
   elStatus.style.color = ok ? '#111827' : '#991b1b';
@@ -135,16 +137,32 @@ async function tryPapaCsv(url){
     });
   });
 }
-function buildGvizUrl(sheetCsvUrl){
-  const mKey = sheetCsvUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)/);
-  const mGid = sheetCsvUrl.match(/[?&]gid=([0-9]+)/);
-  if (!mKey || !mGid) return null;
-  return `https://docs.google.com/spreadsheets/d/e/${mKey[1]}/gviz/tq?gid=${mGid[1]}&tqx=out:json`;
+
+// Build a gviz JSON URL from either published (/d/e/...) or standard (/d/...) sheet links.
+function buildGvizUrl(sheetUrl){
+  // Try to find gid (tab). Default to 0 if none present.
+  const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
+
+  // Published form: /d/e/<key>/...
+  const mPub = sheetUrl.match(/\/spreadsheets\/d\/e\/([^\/?#]+)/);
+  if (mPub) {
+    return `https://docs.google.com/spreadsheets/d/e/${mPub[1]}/gviz/tq?gid=${gid}&tqx=out:json`;
+  }
+
+  // Standard form: /d/<id>/...
+  const mStd = sheetUrl.match(/\/spreadsheets\/d\/([^\/?#]+)/);
+  if (mStd) {
+    return `https://docs.google.com/spreadsheets/d/${mStd[1]}/gviz/tq?gid=${gid}&tqx=out:json`;
+  }
+
+  return null;
 }
-function loadGvizJson(sheetCsvUrl){
+
+function loadGvizJson(sheetUrl){
   return new Promise((resolve, reject) => {
-    const url = buildGvizUrl(sheetCsvUrl);
-    if (!url) return reject(new Error('Could not build gviz URL from Sheet CSV URL.'));
+    const url = buildGvizUrl(sheetUrl);
+    if (!url) return reject(new Error('Could not build gviz URL from Sheet URL.'));
     window.google = window.google || {}; window.google.visualization = window.google.visualization || {};
     window.google.visualization.Query = {
       setResponse: function(resp){
@@ -168,9 +186,10 @@ function loadGvizJson(sheetCsvUrl){
     document.body.appendChild(s);
   });
 }
-async function loadSheetRows(sheetCsvUrl){
-  try { return await tryPapaCsv(sheetCsvUrl); }
-  catch(e){ console.warn('CSV blocked, using gviz', e); return await loadGvizJson(sheetCsvUrl); }
+
+async function loadSheetRows(sheetUrl){
+  try { return await tryPapaCsv(sheetUrl); }
+  catch(e){ console.warn('CSV fetch failed, using gviz JSON fallback.', e); return await loadGvizJson(sheetUrl); }
 }
 
 /* ===== Columns & normalization ===== */
@@ -288,19 +307,21 @@ function renderResults(){
 /* ===== Events ===== */
 function doSearch(){ showResults(true); applyFilters(); }
 document.getElementById('btnSearch').addEventListener('click', doSearch);
-elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 
-elCat.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
+document.getElementById('category').addEventListener('change', () => { if (resultsVisible) applyFilters(); });
 
 document.getElementById('btnReset').addEventListener('click', () => {
-  elQ.value=''; elCat.value='';
+  document.getElementById('q').value=''; document.getElementById('category').value='';
   showResults(false);
   setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
 });
 
 /* ===== Boot ===== */
 (async function boot(){
-  document.getElementById('mymapsBrowser').src = SRC_MYMAP; // keep context map
+  // set map
+  document.getElementById('mymapsBrowser').src = SRC_MYMAP;
+
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_CSV);
@@ -309,9 +330,10 @@ document.getElementById('btnReset').addEventListener('click', () => {
     setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
   }catch(e){
     console.error(e);
-    setStatus('Failed to load data — check CSV URL & publish settings', false);
+    setStatus('Failed to load data — check CSV URL & share settings', false);
   }
 })();
 </script>
 </body>
 </html>
+
