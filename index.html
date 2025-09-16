@@ -38,7 +38,7 @@
             <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results.</div>
           </label>
 
-          <!-- We keep the same select ID to avoid breaking code, but it now means "Layer" -->
+          <!-- Layer filter (the select keeps id='category' to avoid breaking code) -->
           <label class="w-full md:w-64">
             <span class="text-sm font-medium">Layer</span>
             <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
@@ -76,24 +76,33 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
-  // Keep your current published CSV. If you later republish a specific tab,
-  // that link will include gid= and CSV will be used directly.
+  // Your published CSV (no gid). We target the "All" tab via JSON if needed.
   sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
-  // Explicit tab name we want to load when CSV lacks gid= (forces JSON fallback to this tab):
   sheet: "All"
 };
 const P = new URLSearchParams(location.search);
-const SRC_SHEET_URL  = P.get("csv")   || DEFAULTS.sheetUrl;   // keep ?csv= override support
+const SRC_SHEET_URL  = P.get("csv")   || DEFAULTS.sheetUrl;
 const SRC_SHEET_NAME = P.get("sheet") || DEFAULTS.sheet;
 
 /* ===== State ===== */
 let rawRows = [];
 let filtered = [];
 let resultsVisible = false;
-const K = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
+
+const K = {
+  name:'Name',
+  category:'Category',   // kept for compatibility, but NOT used for filtering
+  layer:'Layer',         // <— main filter column
+  lat:'Latitude',
+  lon:'Longitude',
+  address:'Address',
+  notes:'Notes',
+  url:'URL'
+};
+
 const ALIASES = {
   Name: ['name','title','label','place','poi','naziv','ime'],
-  Category: ['category','type','group','kategorija','vrsta'],
+  Category: ['category','type','group','kategorija','vrsta'], // not used for filtering, but we’ll still detect it if present
   Layer: ['layer','folder','sheet','tab','list','group'],
   Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing'],
   Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting'],
@@ -105,7 +114,7 @@ const ALIASES = {
 /* ===== DOM ===== */
 const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
-const elCat = document.getElementById('category');   // now used for Layer
+const elLayerSelect = document.getElementById('category'); // this select represents LAYER
 const elResults = document.getElementById('results');
 const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
@@ -129,11 +138,7 @@ function isCsvUrl(u){
         || (url.pathname.endsWith('/pub') && s.get('output') === 'csv');
   } catch { return false; }
 }
-// Prefer gviz if we have a sheet name but CSV lacks gid=
-function preferGviz(sheetUrl, sheetName){
-  const hasGid = /[?&]gid=/.test(sheetUrl);
-  return !!(sheetName && !hasGid);
-}
+function preferGviz(sheetUrl, sheetName){ const hasGid = /[?&]gid=/.test(sheetUrl); return !!(sheetName && !hasGid); }
 async function tryPapaCsv(url){
   return new Promise((resolve, reject) => {
     Papa.parse(url, {
@@ -147,9 +152,7 @@ async function tryPapaCsv(url){
   });
 }
 function buildGvizUrl(sheetUrl, sheetName){
-  const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/);
-  const gid = gidMatch ? gidMatch[1] : null;
-
+  const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/); const gid = gidMatch ? gidMatch[1] : null;
   const mPub = sheetUrl.match(/\/spreadsheets\/d\/e\/([^\/?#]+)/);
   if (mPub) {
     const base = `https://docs.google.com/spreadsheets/d/e/${mPub[1]}/gviz/tq`;
@@ -212,7 +215,7 @@ function detectColumns(rows){
       if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
     }
   }
-  // If Category is missing, Layer will be used for filtering; that’s fine.
+  // If Layer missing, fall back to Category (compat), but filtering still uses out.Layer.
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
   if (!headerSet.has(out.Latitude) || !headerSet.has(out.Longitude)){
     const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
@@ -220,7 +223,6 @@ function detectColumns(rows){
   }
   return out;
 }
-// robust decimal handling (dot or comma); you said you use dot, which this supports
 function toNumberLoose(v){
   if (typeof v === 'number') return v;
   const s = String(v ?? '').trim();
@@ -255,7 +257,7 @@ function normalizeRows(rows){
     }
     return {
       [K.name]: r[cols.Name],
-      [K.category]: r[cols.Category],
+      [K.category]: r[cols.Category], // kept for display if present
       [K.layer]: r[cols.Layer],
       [K.lat]: lat, [K.lon]: lon,
       [K.address]: r[cols.Address],
@@ -266,18 +268,18 @@ function normalizeRows(rows){
 }
 
 /* ===== Filters & render ===== */
-// Build the dropdown from LAYER values (not Category)
+/* Build dropdown from LAYER values */
 function refreshFilters(){
   const layers = Array.from(new Set(rawRows.map(r => (r[K.layer] ?? '').toString().trim()).filter(Boolean))).sort();
-  elCat.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+  elLayerSelect.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
-  const selLayer = elCat.value;
+  const selLayer = elLayerSelect.value;
 
   filtered = rawRows.filter(r => {
     const inLayer = !selLayer || (r[K.layer] ?? '').toString() === selLayer;
-    const text = [r[K.name], r[K.address], r[K.notes], r[K.layer], r[K.category]]
+    const text = [r[K.name], r[K.address], r[K.notes], r[K.layer]]
       .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
     const inQ = !q || text.includes(q);
     const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
@@ -298,7 +300,6 @@ function renderResults(){
   filtered.forEach((r) => {
     const title = escapeHtml(r[K.name] ?? 'Untitled');
     const lay = escapeHtml(r[K.layer] ?? '');
-    const cat = escapeHtml(r[K.category] ?? ''); // shown only if present
     const addr = escapeHtml(r[K.address] ?? '');
     const url = (r[K.url] ?? '').toString().trim();
     const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
@@ -314,7 +315,6 @@ function renderResults(){
           <div class="font-medium">${title}</div>
           <div class="mt-1 space-x-1">
             ${lay ? `<span class="chip">${lay}</span>` : ''}
-            ${cat ? `<span class="chip">${cat}</span>` : ''}
           </div>
           ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
         </div>
@@ -331,10 +331,9 @@ function renderResults(){
 function doSearch(){ showResults(true); applyFilters(); }
 elBtnSearch.addEventListener('click', doSearch);
 elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-// When results are visible, changing Layer re-filters; otherwise it stays hidden until Search.
-elCat.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
+elLayerSelect.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
 elReset.addEventListener('click', () => {
-  elQ.value=''; elCat.value='';
+  elQ.value=''; elLayerSelect.value='';
   showResults(false);
   setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
 });
@@ -355,4 +354,5 @@ elReset.addEventListener('click', () => {
 </script>
 </body>
 </html>
+
 
