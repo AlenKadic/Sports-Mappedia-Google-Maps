@@ -23,7 +23,8 @@
         <h1 class="text-2xl font-bold">Sports Mappedia</h1>
         <p class="text-sm text-gray-600">This is unofficial fan created GIS hub for Sports events.</p>
       </div>
-      <span id="status" class="text-xs px-2 py-1 rounded-lg border bg-white">Loading…</span>
+      <!-- Keep status in DOM for scripts/assistive tech, but hide visually -->
+      <span id="status" class="sr-only">Loading…</span>
     </header>
 
     <!-- Controls (top) -->
@@ -37,7 +38,7 @@
               <input id="q" class="w-full border rounded-xl px-3 py-2" placeholder="Type to search…"/>
               <button id="btnSearch" class="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50">Search</button>
             </div>
-            <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results. (Typing alone won’t show results.)</div>
+            <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results.</div>
           </label>
 
           <label class="w-full md:w-64">
@@ -65,7 +66,6 @@
 
     <!-- Map (bottom) -->
     <section class="bg-white rounded-2xl shadow overflow-hidden">
-      <!-- Context map (read-only My Maps embed) -->
       <iframe id="mymapsBrowser" class="w-full embedTall"
               src="https://www.google.com/maps/d/embed?mid=1flufWwvpBFS6g7t7rddkzZnWsyeMVCw&ehbc=2E312F"
               loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
@@ -73,10 +73,6 @@
         Note: My Maps iframes are read-only from this page; each result has an “Open in Google Maps” link.
       </div>
     </section>
-
-    <footer class="py-6 text-center text-xs text-gray-500">
-      Data Browser • Google Sheets CSV (with gviz JSON fallback).
-    </footer>
   </div>
 
 <script>
@@ -92,7 +88,7 @@ const SRC_CSV   = P.get("csv")   || DEFAULTS.csv;
 /* ===== State ===== */
 let rawRows = [];
 let filtered = [];
-let resultsVisible = false; // hide results until Search/Enter
+let resultsVisible = false;
 const K = { name:'Name', category:'Category', layer:'Layer', lat:'Latitude', lon:'Longitude', address:'Address', notes:'Notes', url:'URL' };
 const ALIASES = {
   Name: ['name','title','label','place','poi','naziv','ime'],
@@ -114,10 +110,14 @@ const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
 const elBtnSearch = document.getElementById('btnSearch');
 const elCounts = document.getElementById('counts');
-const elM2 = document.getElementById('mymapsBrowser');
 
 /* ===== Helpers ===== */
-function setStatus(text, ok=true){ elStatus.textContent = text; elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444'; elStatus.style.color = ok ? '#111827' : '#991b1b'; }
+function setStatus(text, ok=true){
+  // Keep updating (useful in dev / screen readers), but it remains visually hidden.
+  elStatus.textContent = text;
+  elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444';
+  elStatus.style.color = ok ? '#111827' : '#991b1b';
+}
 function escapeHtml(s){ return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); resultsVisible = !!show; }
@@ -287,14 +287,12 @@ function renderResults(){
 
 /* ===== Events ===== */
 function doSearch(){ showResults(true); applyFilters(); }
-elBtnSearch.addEventListener('click', doSearch);
+document.getElementById('btnSearch').addEventListener('click', doSearch);
 elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 
-// After results are shown once, category changes will re-filter immediately.
-// If results are still hidden, category changes won't show them.
 elCat.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
 
-elReset.addEventListener('click', () => {
+document.getElementById('btnReset').addEventListener('click', () => {
   elQ.value=''; elCat.value='';
   showResults(false);
   setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
@@ -302,7 +300,7 @@ elReset.addEventListener('click', () => {
 
 /* ===== Boot ===== */
 (async function boot(){
-  document.getElementById('mymapsBrowser').src = SRC_MYMAP; // context map below
+  document.getElementById('mymapsBrowser').src = SRC_MYMAP; // keep context map
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_CSV);
