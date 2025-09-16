@@ -38,7 +38,7 @@
             <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results.</div>
           </label>
 
-          <!-- Layer filter (same structure as the old Category widget) -->
+          <!-- Layer filter -->
           <label class="w-full md:w-64">
             <span class="text-sm font-medium">Layer</span>
             <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
@@ -76,8 +76,10 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
+  // Your published CSV (anonymous)
   sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
-  sheet: "All" // used only if we need JSON fallback
+  // If JSON fallback is needed, we’ll target this tab:
+  sheet: "All"
 };
 const P = new URLSearchParams(location.search);
 const SRC_SHEET_URL  = P.get("csv")   || DEFAULTS.sheetUrl;
@@ -111,7 +113,7 @@ const ALIASES = {
 /* ===== DOM ===== */
 const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
-const elLayerSelect = document.getElementById('category'); // same element id, but it's Layer-only now
+const elLayerSelect = document.getElementById('category'); // same element id, but Layer-only
 const elResults = document.getElementById('results');
 const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
@@ -225,7 +227,7 @@ function detectColumns(rows){
   return out;
 }
 
-// robust number parser (dot or comma decimals tolerated)
+// robust number parser
 function toNumberLoose(v){
   if (typeof v==='number') return v;
   const s=String(v??'').trim();
@@ -277,6 +279,7 @@ function refreshFilters(){
   elLayerSelect.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
 
+/* ------------- CHANGED: do NOT require coordinates ------------- */
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
   const selLayer = elLayerSelect.value;
@@ -284,18 +287,22 @@ function applyFilters(){
   filtered = rawRows.filter(r=>{
     const layerVal=(r[K.layer] ?? '').toString().trim();
     const inLayer = !selLayer || layerVal === selLayer;
+
     const text = [r[K.name], r[K.address], r[K.notes], layerVal]
-      .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
+      .map(v => (v ?? '').toString().toLowerCase())
+      .join(' • ');
+
     const inQ = !q || text.includes(q);
-    const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
-    const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
-    return inLayer && inQ && coordsOk;
+
+    // Do NOT require coordinates anymore
+    return inLayer && inQ;
   });
 
   elCounts.textContent = String(filtered.length);
-  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`);
+  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length}`);
   renderResults();
 }
+/* --------------------------------------------------------------- */
 
 function renderResults(){
   elResults.innerHTML='';
