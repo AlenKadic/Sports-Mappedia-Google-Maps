@@ -38,8 +38,9 @@
             <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results.</div>
           </label>
 
+          <!-- We keep the same select ID to avoid breaking code, but it now means "Layer" -->
           <label class="w-full md:w-64">
-            <span class="text-sm font-medium">Category</span>
+            <span class="text-sm font-medium">Layer</span>
             <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
               <option value="">All</option>
             </select>
@@ -64,7 +65,7 @@
     <!-- Map (bottom) -->
     <section class="bg-white rounded-2xl shadow overflow-hidden">
       <iframe id="mymapsBrowser" class="w-full embedTall"
-              src=""
+              src="https://www.google.com/maps/d/embed?mid=1U8S4d0slm-Ttcd09aPGu2cSgmb-jyt8&ehbc=2E312F"
               loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
       <div class="p-3 text-xs text-gray-600 border-t">
         Note: My Maps iframes are read-only from this page; each result has an “Open in Google Maps” link.
@@ -75,15 +76,14 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
-  mymap: "https://www.google.com/maps/d/embed?mid=1U8S4d0slm-Ttcd09aPGu2cSgmb-jyt8&ehbc=2E312F",
-  // Your published CSV link (works anonymously)
+  // Keep your current published CSV. If you later republish a specific tab,
+  // that link will include gid= and CSV will be used directly.
   sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
-  // We keep a sheet name for JSON fallback if you ever switch back to /edit links
+  // Explicit tab name we want to load when CSV lacks gid= (forces JSON fallback to this tab):
   sheet: "All"
 };
 const P = new URLSearchParams(location.search);
-const SRC_MYMAP = P.get("mymap") || DEFAULTS.mymap;
-const SRC_SHEET_URL = P.get("csv") || DEFAULTS.sheetUrl;
+const SRC_SHEET_URL  = P.get("csv")   || DEFAULTS.sheetUrl;   // keep ?csv= override support
 const SRC_SHEET_NAME = P.get("sheet") || DEFAULTS.sheet;
 
 /* ===== State ===== */
@@ -105,7 +105,7 @@ const ALIASES = {
 /* ===== DOM ===== */
 const elStatus = document.getElementById('status');
 const elQ = document.getElementById('q');
-const elCat = document.getElementById('category');
+const elCat = document.getElementById('category');   // now used for Layer
 const elResults = document.getElementById('results');
 const elResultsBlock = document.getElementById('resultsBlock');
 const elReset = document.getElementById('btnReset');
@@ -113,11 +113,7 @@ const elBtnSearch = document.getElementById('btnSearch');
 const elCounts = document.getElementById('counts');
 
 /* ===== Helpers ===== */
-function setStatus(text, ok=true){
-  elStatus.textContent = text; // sr-only (hidden)
-  elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444';
-  elStatus.style.color = ok ? '#111827' : '#991b1b';
-}
+function setStatus(text, ok=true){ elStatus.textContent = text; }
 function escapeHtml(s){ return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); resultsVisible = !!show; }
@@ -130,8 +126,13 @@ function isCsvUrl(u){
     const s = url.searchParams;
     return (url.pathname.includes('/export') && s.get('format') === 'csv')
         || (s.get('output') === 'csv')
-        || url.pathname.endsWith('/pub') && s.get('output') === 'csv';
+        || (url.pathname.endsWith('/pub') && s.get('output') === 'csv');
   } catch { return false; }
+}
+// Prefer gviz if we have a sheet name but CSV lacks gid=
+function preferGviz(sheetUrl, sheetName){
+  const hasGid = /[?&]gid=/.test(sheetUrl);
+  return !!(sheetName && !hasGid);
 }
 async function tryPapaCsv(url){
   return new Promise((resolve, reject) => {
@@ -148,18 +149,19 @@ async function tryPapaCsv(url){
 function buildGvizUrl(sheetUrl, sheetName){
   const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/);
   const gid = gidMatch ? gidMatch[1] : null;
+
   const mPub = sheetUrl.match(/\/spreadsheets\/d\/e\/([^\/?#]+)/);
   if (mPub) {
     const base = `https://docs.google.com/spreadsheets/d/e/${mPub[1]}/gviz/tq`;
     if (sheetName) return `${base}?sheet=${encodeURIComponent(sheetName)}&tqx=out:json`;
-    if (gid) return `${base}?gid=${gid}&tqx=out:json`;
+    if (gid)      return `${base}?gid=${gid}&tqx=out:json`;
     return `${base}?tqx=out:json`;
   }
   const mStd = sheetUrl.match(/\/spreadsheets\/d\/([^\/?#]+)/);
   if (mStd) {
     const base = `https://docs.google.com/spreadsheets/d/${mStd[1]}/gviz/tq`;
     if (sheetName) return `${base}?sheet=${encodeURIComponent(sheetName)}&tqx=out:json`;
-    if (gid) return `${base}?gid=${gid}&tqx=out:json`;
+    if (gid)      return `${base}?gid=${gid}&tqx=out:json`;
     return `${base}?tqx=out:json`;
   }
   return null;
@@ -192,7 +194,7 @@ function loadGvizJson(sheetUrl, sheetName){
   });
 }
 async function loadSheetRows(sheetUrl, sheetName){
-  if (isCsvUrl(sheetUrl)) {
+  if (isCsvUrl(sheetUrl) && !preferGviz(sheetUrl, sheetName)) {
     try { return await tryPapaCsv(sheetUrl); }
     catch(e){ console.warn('CSV fetch failed, using gviz JSON fallback.', e); }
   }
@@ -210,6 +212,7 @@ function detectColumns(rows){
       if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
     }
   }
+  // If Category is missing, Layer will be used for filtering; that’s fine.
   if (!headerSet.has(out.Layer)) out.Layer = out.Category;
   if (!headerSet.has(out.Latitude) || !headerSet.has(out.Longitude)){
     const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
@@ -217,22 +220,33 @@ function detectColumns(rows){
   }
   return out;
 }
+// robust decimal handling (dot or comma); you said you use dot, which this supports
+function toNumberLoose(v){
+  if (typeof v === 'number') return v;
+  const s = String(v ?? '').trim();
+  if (!s) return NaN;
+  const comma = s.includes(','), dot = s.includes('.');
+  if (dot && comma && s.indexOf('.') < s.indexOf(',')) return Number(s.replace(/\./g, '').replace(',', '.'));
+  if (dot && comma && s.indexOf(',') < s.indexOf('.')) return Number(s.replace(/,/g, ''));
+  if (comma && !dot) return Number(s.replace(',', '.'));
+  return Number(s);
+}
 function parseCoordPair(text){
   if (!text) return [NaN,NaN];
   const s=String(text).trim();
-  let m=s.match(/^\s*([-+]?\d+(\.\d+)?)\s*[,;]\s*([-+]?\d+(\.\d+)?)\s*$/);
-  if (m) return [parseFloat(m[1]), parseFloat(m[3])];
-  m=s.match(/POINT\s*\(\s*([-+]?\d+(\.\d+)?)\s+([-+]?\d+(\.\d+)?)\s*\)/i);
-  if (m) return [parseFloat(m[3]), parseFloat(m[1])];
-  m=s.match(/lat\s*[:=]\s*([-+]?\d+(\.\d+)?).*(lon|lng)\s*[:=]\s*([-+]?\d+(\.\d+)?)/i);
-  if (m) return [parseFloat(m[1]), parseFloat(m[4])];
+  let m=s.match(/^\s*([-+]?\d+([.,]\d+)?)\s*[,;]\s*([-+]?\d+([.,]\d+)?)\s*$/);
+  if (m) return [toNumberLoose(m[1]), toNumberLoose(m[3])];
+  m=s.match(/POINT\s*\(\s*([-+]?\d+([.,]\d+)?)\s+([-+]?\d+([.,]\d+)?)\s*\)/i);
+  if (m) return [toNumberLoose(m[3]), toNumberLoose(m[1])];
+  m=s.match(/lat\s*[:=]\s*([-+]?\d+([.,]\d+)?).*(lon|lng)\s*[:=]\s*([-+]?\d+([.,]\d+)?)/i);
+  if (m) return [toNumberLoose(m[1]), toNumberLoose(m[4])];
   return [NaN,NaN];
 }
 function normalizeRows(rows){
   const cols = detectColumns(rows);
   return rows.map(r => {
-    let lat = Number(r[cols.Latitude]);
-    let lon = Number(r[cols.Longitude]);
+    let lat = toNumberLoose(r[cols.Latitude]);
+    let lon = toNumberLoose(r[cols.Longitude]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)){
       if (cols._combined){
         const [pLat,pLon] = parseCoordPair(r[cols._combined]);
@@ -252,23 +266,23 @@ function normalizeRows(rows){
 }
 
 /* ===== Filters & render ===== */
+// Build the dropdown from LAYER values (not Category)
 function refreshFilters(){
-  const cats = Array.from(new Set(rawRows.map(r => (r[K.category] ?? '').toString().trim()).filter(Boolean))).sort();
-  document.getElementById('category').innerHTML =
-    '<option value="">All</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const layers = Array.from(new Set(rawRows.map(r => (r[K.layer] ?? '').toString().trim()).filter(Boolean))).sort();
+  elCat.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
-  const c = elCat.value;
+  const selLayer = elCat.value;
 
   filtered = rawRows.filter(r => {
-    const inCat = !c || (r[K.category] ?? '').toString() === c;
-    const text = [r[K.name], r[K.address], r[K.notes], r[K.category], r[K.layer]]
+    const inLayer = !selLayer || (r[K.layer] ?? '').toString() === selLayer;
+    const text = [r[K.name], r[K.address], r[K.notes], r[K.layer], r[K.category]]
       .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
     const inQ = !q || text.includes(q);
-    const lat = Number(r[K.lat]), lon = Number(r[K.lon]);
+    const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
     const coordsOk = Number.isFinite(lat) && Number.isFinite(lon);
-    return inCat && inQ && coordsOk;
+    return inLayer && inQ && coordsOk;
   });
 
   elCounts.textContent = String(filtered.length);
@@ -283,12 +297,14 @@ function renderResults(){
   }
   filtered.forEach((r) => {
     const title = escapeHtml(r[K.name] ?? 'Untitled');
-    const cat = escapeHtml(r[K.category] ?? '');
     const lay = escapeHtml(r[K.layer] ?? '');
+    const cat = escapeHtml(r[K.category] ?? ''); // shown only if present
     const addr = escapeHtml(r[K.address] ?? '');
     const url = (r[K.url] ?? '').toString().trim();
-    const lat = Number(r[K.lat]), lon = Number(r[K.lon]);
-    const gmaps = `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lon)}`;
+    const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
+    const gmaps = (Number.isFinite(lat) && Number.isFinite(lon))
+      ? `https://www.google.com/maps?q=${encodeURIComponent(lat+','+lon)}`
+      : '';
 
     const card = document.createElement('div');
     card.className = 'border rounded-xl p-2 hover:bg-gray-50';
@@ -297,13 +313,13 @@ function renderResults(){
         <div>
           <div class="font-medium">${title}</div>
           <div class="mt-1 space-x-1">
-            ${cat ? `<span class="chip">${cat}</span>` : ''}
             ${lay ? `<span class="chip">${lay}</span>` : ''}
+            ${cat ? `<span class="chip">${cat}</span>` : ''}
           </div>
           ${addr ? `<div class="mt-1 text-xs text-gray-600">${addr}</div>` : ''}
         </div>
         <div class="flex flex-col items-end gap-1">
-          <a href="${gmaps}" target="_blank" class="text-xs text-blue-600 underline">Open in Google Maps</a>
+          ${gmaps ? `<a href="${gmaps}" target="_blank" class="text-xs text-blue-600 underline">Open in Google Maps</a>` : ''}
           ${url ? `<a href="${escapeAttr(url)}" target="_blank" class="text-xs text-blue-600 underline">Open link</a>` : ''}
         </div>
       </div>`;
@@ -313,18 +329,18 @@ function renderResults(){
 
 /* ===== Events ===== */
 function doSearch(){ showResults(true); applyFilters(); }
-document.getElementById('btnSearch').addEventListener('click', doSearch);
-document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-document.getElementById('category').addEventListener('change', () => { if (resultsVisible) applyFilters(); });
-document.getElementById('btnReset').addEventListener('click', () => {
-  document.getElementById('q').value=''; document.getElementById('category').value='';
+elBtnSearch.addEventListener('click', doSearch);
+elQ.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+// When results are visible, changing Layer re-filters; otherwise it stays hidden until Search.
+elCat.addEventListener('change', () => { if (resultsVisible) applyFilters(); });
+elReset.addEventListener('click', () => {
+  elQ.value=''; elCat.value='';
   showResults(false);
   setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
 });
 
 /* ===== Boot ===== */
 (async function boot(){
-  document.getElementById('mymapsBrowser').src = SRC_MYMAP;
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_SHEET_URL, SRC_SHEET_NAME);
@@ -339,5 +355,4 @@ document.getElementById('btnReset').addEventListener('click', () => {
 </script>
 </body>
 </html>
-
 
