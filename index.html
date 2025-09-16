@@ -5,15 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Sports Mappedia — Data Browser</title>
   <meta name="description" content="This is unofficial fan created GIS hub for Sports events.">
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- PapaParse for CSV parsing -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <link rel="icon" href="data:,">
   <style>
     html, body { height: 100%; }
     .chip { display:inline-block; padding: 0.125rem 0.5rem; font-size: 0.75rem; border-radius: 9999px; border: 1px solid rgb(209 213 219); }
-    .embedTall { height: 70vh; } /* map below the filters */
+    .embedTall { height: 70vh; }
     .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
   </style>
 </head>
@@ -24,14 +22,12 @@
         <h1 class="text-2xl font-bold">Sports Mappedia</h1>
         <p class="text-sm text-gray-600">This is unofficial fan created GIS hub for Sports events.</p>
       </div>
-      <!-- Status is hidden but still updated for accessibility/debug -->
       <span id="status" class="sr-only">Loading…</span>
     </header>
 
     <!-- Controls (top) -->
     <section class="bg-white rounded-2xl shadow p-4 mb-3">
       <div class="flex flex-col gap-3">
-        <!-- Search + Category row -->
         <div class="flex flex-col md:flex-row md:items-start gap-3">
           <label class="flex-1">
             <span class="text-sm font-medium">Search (name, address, notes)</span>
@@ -77,19 +73,17 @@
   </div>
 
 <script>
-/* ===== Config (defaults + URL overrides) =====
-   - mymap: embed URL
-   - sheetUrl: your Sheet (can be /edit link or a published CSV link)
-   - sheet: the tab name to load (we use "All" as requested)
-*/
+/* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
   mymap: "https://www.google.com/maps/d/embed?mid=1U8S4d0slm-Ttcd09aPGu2cSgmb-jyt8&ehbc=2E312F",
-  sheetUrl: "https://docs.google.com/spreadsheets/d/1xzd2arCkBwqT71QmWygNnsKl221IhbZNMJKLis0m8Zw/edit?usp=sharing",
+  // Your published CSV link (works anonymously)
+  sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
+  // We keep a sheet name for JSON fallback if you ever switch back to /edit links
   sheet: "All"
 };
 const P = new URLSearchParams(location.search);
 const SRC_MYMAP = P.get("mymap") || DEFAULTS.mymap;
-const SRC_SHEET_URL = P.get("csv") || DEFAULTS.sheetUrl;   // keeps 'csv' param name for backward-compat
+const SRC_SHEET_URL = P.get("csv") || DEFAULTS.sheetUrl;
 const SRC_SHEET_NAME = P.get("sheet") || DEFAULTS.sheet;
 
 /* ===== State ===== */
@@ -120,7 +114,7 @@ const elCounts = document.getElementById('counts');
 
 /* ===== Helpers ===== */
 function setStatus(text, ok=true){
-  elStatus.textContent = text; // sr-only (hidden visually)
+  elStatus.textContent = text; // sr-only (hidden)
   elStatus.style.borderColor = ok ? '#d1d5db' : '#ef4444';
   elStatus.style.color = ok ? '#111827' : '#991b1b';
 }
@@ -129,19 +123,16 @@ function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); resultsVisible = !!show; }
 
 /* ===== CSV / gviz loader ===== */
-
-// Decide if a URL is a direct CSV export link
 function isCsvUrl(u){
   try {
     const url = new URL(u);
     if (!/docs.google.com$/.test(url.host)) return false;
-    // CSV forms: /export?format=csv or /pub?output=csv
     const s = url.searchParams;
     return (url.pathname.includes('/export') && s.get('format') === 'csv')
-        || (s.get('output') === 'csv');
+        || (s.get('output') === 'csv')
+        || url.pathname.endsWith('/pub') && s.get('output') === 'csv';
   } catch { return false; }
 }
-
 async function tryPapaCsv(url){
   return new Promise((resolve, reject) => {
     Papa.parse(url, {
@@ -154,14 +145,9 @@ async function tryPapaCsv(url){
     });
   });
 }
-
-// Build a gviz JSON URL from either published (/d/e/...) or standard (/d/...) sheet links.
-// Prefer sheet name; fall back to gid if present in the input URL.
 function buildGvizUrl(sheetUrl, sheetName){
   const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/);
   const gid = gidMatch ? gidMatch[1] : null;
-
-  // Published form: /d/e/<key>/...
   const mPub = sheetUrl.match(/\/spreadsheets\/d\/e\/([^\/?#]+)/);
   if (mPub) {
     const base = `https://docs.google.com/spreadsheets/d/e/${mPub[1]}/gviz/tq`;
@@ -169,7 +155,6 @@ function buildGvizUrl(sheetUrl, sheetName){
     if (gid) return `${base}?gid=${gid}&tqx=out:json`;
     return `${base}?tqx=out:json`;
   }
-  // Standard form: /d/<id>/...
   const mStd = sheetUrl.match(/\/spreadsheets\/d\/([^\/?#]+)/);
   if (mStd) {
     const base = `https://docs.google.com/spreadsheets/d/${mStd[1]}/gviz/tq`;
@@ -179,7 +164,6 @@ function buildGvizUrl(sheetUrl, sheetName){
   }
   return null;
 }
-
 function loadGvizJson(sheetUrl, sheetName){
   return new Promise((resolve, reject) => {
     const url = buildGvizUrl(sheetUrl, sheetName);
@@ -207,7 +191,6 @@ function loadGvizJson(sheetUrl, sheetName){
     document.body.appendChild(s);
   });
 }
-
 async function loadSheetRows(sheetUrl, sheetName){
   if (isCsvUrl(sheetUrl)) {
     try { return await tryPapaCsv(sheetUrl); }
@@ -332,9 +315,7 @@ function renderResults(){
 function doSearch(){ showResults(true); applyFilters(); }
 document.getElementById('btnSearch').addEventListener('click', doSearch);
 document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-
 document.getElementById('category').addEventListener('change', () => { if (resultsVisible) applyFilters(); });
-
 document.getElementById('btnReset').addEventListener('click', () => {
   document.getElementById('q').value=''; document.getElementById('category').value='';
   showResults(false);
@@ -343,9 +324,7 @@ document.getElementById('btnReset').addEventListener('click', () => {
 
 /* ===== Boot ===== */
 (async function boot(){
-  // set map
   document.getElementById('mymapsBrowser').src = SRC_MYMAP;
-
   setStatus('Loading data…');
   try{
     const rows = await loadSheetRows(SRC_SHEET_URL, SRC_SHEET_NAME);
