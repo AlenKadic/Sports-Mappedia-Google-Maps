@@ -38,7 +38,7 @@
             <div class="text-xs text-gray-500 mt-1">Press Search or Enter to show results.</div>
           </label>
 
-          <!-- Layer filter (the select keeps id='category' to avoid breaking code) -->
+          <!-- Layer filter -->
           <label class="w-full md:w-64">
             <span class="text-sm font-medium">Layer</span>
             <select id="category" class="mt-1 w-full border rounded-xl px-3 py-2">
@@ -76,8 +76,9 @@
 <script>
 /* ===== Config (defaults + URL overrides) ===== */
 const DEFAULTS = {
-  // Your published CSV (no gid). We target the "All" tab via JSON if needed.
+  // Your published CSV for the sheet. (We’ll use CSV first; JSON is only a fallback.)
   sheetUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo9I4u2eq3GUY-9K-Kopu1wRcA9-ZHI9BjEVAMs4kD8zH3PGaKmRWwm9Wcy4bTgJTFNeQrqfxcAOR8/pub?output=csv",
+  // If you ever switch back to a /edit link or need a specific tab via JSON fallback, set the tab name here:
   sheet: "All"
 };
 const P = new URLSearchParams(location.search);
@@ -91,7 +92,7 @@ let resultsVisible = false;
 
 const K = {
   name:'Name',
-  category:'Category',   // kept for compatibility, but NOT used for filtering
+  category:'Category',   // kept for compatibility/display only
   layer:'Layer',         // <— main filter column
   lat:'Latitude',
   lon:'Longitude',
@@ -102,7 +103,7 @@ const K = {
 
 const ALIASES = {
   Name: ['name','title','label','place','poi','naziv','ime'],
-  Category: ['category','type','group','kategorija','vrsta'], // not used for filtering, but we’ll still detect it if present
+  Category: ['category','type','group','kategorija','vrsta'],
   Layer: ['layer','folder','sheet','tab','list','group'],
   Latitude: ['latitude','lat','y','y_coord','ycoord','φ','northing'],
   Longitude: ['longitude','lon','lng','long','x','x_coord','xcoord','λ','easting'],
@@ -122,7 +123,7 @@ const elBtnSearch = document.getElementById('btnSearch');
 const elCounts = document.getElementById('counts');
 
 /* ===== Helpers ===== */
-function setStatus(text, ok=true){ elStatus.textContent = text; }
+function setStatus(text){ elStatus.textContent = text; }
 function escapeHtml(s){ return (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[m])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); resultsVisible = !!show; }
@@ -131,14 +132,14 @@ function showResults(show){ elResultsBlock.classList.toggle('hidden', !show); re
 function isCsvUrl(u){
   try {
     const url = new URL(u);
-    if (!/docs.google.com$/.test(url.host)) return false;
+    if (!/docs\.google\.com$/.test(url.host)) return false;
     const s = url.searchParams;
     return (url.pathname.includes('/export') && s.get('format') === 'csv')
         || (s.get('output') === 'csv')
         || (url.pathname.endsWith('/pub') && s.get('output') === 'csv');
   } catch { return false; }
 }
-function preferGviz(sheetUrl, sheetName){ const hasGid = /[?&]gid=/.test(sheetUrl); return !!(sheetName && !hasGid); }
+
 async function tryPapaCsv(url){
   return new Promise((resolve, reject) => {
     Papa.parse(url, {
@@ -151,8 +152,12 @@ async function tryPapaCsv(url){
     });
   });
 }
+
+// Build a gviz JSON URL as fallback (works with /d/<id> or /d/e/<pubkey>)
 function buildGvizUrl(sheetUrl, sheetName){
-  const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/); const gid = gidMatch ? gidMatch[1] : null;
+  const gidMatch = sheetUrl.match(/[?&]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : null;
+
   const mPub = sheetUrl.match(/\/spreadsheets\/d\/e\/([^\/?#]+)/);
   if (mPub) {
     const base = `https://docs.google.com/spreadsheets/d/e/${mPub[1]}/gviz/tq`;
@@ -169,6 +174,7 @@ function buildGvizUrl(sheetUrl, sheetName){
   }
   return null;
 }
+
 function loadGvizJson(sheetUrl, sheetName){
   return new Promise((resolve, reject) => {
     const url = buildGvizUrl(sheetUrl, sheetName);
@@ -196,8 +202,10 @@ function loadGvizJson(sheetUrl, sheetName){
     document.body.appendChild(s);
   });
 }
+
 async function loadSheetRows(sheetUrl, sheetName){
-  if (isCsvUrl(sheetUrl) && !preferGviz(sheetUrl, sheetName)) {
+  // Always try CSV first if it's a CSV link; fall back to gviz only if CSV fails.
+  if (isCsvUrl(sheetUrl)) {
     try { return await tryPapaCsv(sheetUrl); }
     catch(e){ console.warn('CSV fetch failed, using gviz JSON fallback.', e); }
   }
@@ -205,24 +213,32 @@ async function loadSheetRows(sheetUrl, sheetName){
 }
 
 /* ===== Columns & normalization ===== */
+// Trim header names before alias matching (avoids "Layer " vs "Layer")
 function detectColumns(rows){
   if (!rows.length) return K;
-  const headerSet = new Set(Object.keys(rows[0]).map(h => h.toString()));
-  const lowerToReal = {}; headerSet.forEach(h => lowerToReal[h.toLowerCase()] = h);
+  const headers = Object.keys(rows[0]).map(h => h.toString());
+  const lowerToReal = {};
+  headers.forEach(h => {
+    const norm = h.toLowerCase().trim();
+    if (!(norm in lowerToReal)) lowerToReal[norm] = h; // first wins
+  });
   const out = {...K};
   for (const target in ALIASES){
     for (const alias of ALIASES[target]){
-      if (alias in lowerToReal){ out[target] = lowerToReal[alias]; break; }
+      const key = alias.toLowerCase().trim();
+      if (key in lowerToReal){ out[target] = lowerToReal[key]; break; }
     }
   }
-  // If Layer missing, fall back to Category (compat), but filtering still uses out.Layer.
-  if (!headerSet.has(out.Layer)) out.Layer = out.Category;
-  if (!headerSet.has(out.Latitude) || !headerSet.has(out.Longitude)){
-    const candidates = Array.from(headerSet).filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
+  if (!headers.includes(out.Layer)) out.Layer = out.Category; // fallback, though we filter by Layer
+  // Try to find a combined coords column if lat/lon missing
+  if (!headers.includes(out.Latitude) || !headers.includes(out.Longitude)){
+    const candidates = headers.filter(h => /coord|location|point|lat|lon|geometry|geo/i.test(h));
     out._combined = candidates[0] || null;
   }
   return out;
 }
+
+// Robust decimal handling (you use dot decimals; this also tolerates commas if any appear)
 function toNumberLoose(v){
   if (typeof v === 'number') return v;
   const s = String(v ?? '').trim();
@@ -233,6 +249,7 @@ function toNumberLoose(v){
   if (comma && !dot) return Number(s.replace(',', '.'));
   return Number(s);
 }
+
 function parseCoordPair(text){
   if (!text) return [NaN,NaN];
   const s=String(text).trim();
@@ -244,6 +261,7 @@ function parseCoordPair(text){
   if (m) return [toNumberLoose(m[1]), toNumberLoose(m[4])];
   return [NaN,NaN];
 }
+
 function normalizeRows(rows){
   const cols = detectColumns(rows);
   return rows.map(r => {
@@ -255,10 +273,12 @@ function normalizeRows(rows){
         if (Number.isFinite(pLat) && Number.isFinite(pLon)){ lat=pLat; lon=pLon; }
       }
     }
+    // Trim Layer to avoid filter mismatches (e.g., "Stadium " vs "Stadium")
+    const layerVal = (r[cols.Layer] ?? '').toString().trim();
     return {
       [K.name]: r[cols.Name],
-      [K.category]: r[cols.Category], // kept for display if present
-      [K.layer]: r[cols.Layer],
+      [K.category]: r[cols.Category], // optional; not used for filtering
+      [K.layer]: layerVal,
       [K.lat]: lat, [K.lon]: lon,
       [K.address]: r[cols.Address],
       [K.notes]: r[cols.Notes],
@@ -268,18 +288,19 @@ function normalizeRows(rows){
 }
 
 /* ===== Filters & render ===== */
-/* Build dropdown from LAYER values */
 function refreshFilters(){
   const layers = Array.from(new Set(rawRows.map(r => (r[K.layer] ?? '').toString().trim()).filter(Boolean))).sort();
   elLayerSelect.innerHTML = '<option value="">All</option>' + layers.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
+
 function applyFilters(){
   const q = (elQ.value || '').trim().toLowerCase();
   const selLayer = elLayerSelect.value;
 
   filtered = rawRows.filter(r => {
-    const inLayer = !selLayer || (r[K.layer] ?? '').toString() === selLayer;
-    const text = [r[K.name], r[K.address], r[K.notes], r[K.layer]]
+    const layerVal = (r[K.layer] ?? '').toString().trim();
+    const inLayer = !selLayer || layerVal === selLayer;
+    const text = [r[K.name], r[K.address], r[K.notes], layerVal]
       .map(v => (v ?? '').toString().toLowerCase()).join(' • ');
     const inQ = !q || text.includes(q);
     const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
@@ -288,9 +309,10 @@ function applyFilters(){
   });
 
   elCounts.textContent = String(filtered.length);
-  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`, true);
+  setStatus(`Loaded ${rawRows.length} rows • Showing ${filtered.length} with coordinates`);
   renderResults();
 }
+
 function renderResults(){
   elResults.innerHTML = '';
   if (!filtered.length){
@@ -299,7 +321,7 @@ function renderResults(){
   }
   filtered.forEach((r) => {
     const title = escapeHtml(r[K.name] ?? 'Untitled');
-    const lay = escapeHtml(r[K.layer] ?? '');
+    const lay = escapeHtml((r[K.layer] ?? '').toString().trim());
     const addr = escapeHtml(r[K.address] ?? '');
     const url = (r[K.url] ?? '').toString().trim();
     const lat = toNumberLoose(r[K.lat]), lon = toNumberLoose(r[K.lon]);
@@ -346,13 +368,13 @@ elReset.addEventListener('click', () => {
     rawRows = normalizeRows(rows);
     refreshFilters();
     setStatus(`Loaded ${rawRows.length} rows • Waiting for search…`);
+    console.log('Rows loaded:', rawRows.length);
   }catch(e){
     console.error(e);
-    setStatus('Failed to load data — check Sheet link & sharing', false);
+    setStatus('Failed to load data — check Sheet link & sharing');
   }
 })();
 </script>
 </body>
 </html>
-
 
